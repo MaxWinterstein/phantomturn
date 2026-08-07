@@ -56,11 +56,18 @@ export function crc16(bytes, crc = 0) {
   return crc & 0xffff;
 }
 
-/** Python-compatible rounding (half-to-even), so ports stay byte-identical. */
+/**
+ * Python-compatible rounding (half-to-even), so ports stay byte-identical.
+ *
+ * The tie test is exact. `x - Math.floor(x)` is exact for |x| < 2^52, so an
+ * epsilon window buys nothing and costs correctness: an absolute tolerance of
+ * 8 * EPSILON is wider than one ULP below |x| ~ 16, which swept genuine
+ * near-ties into the tie branch and rounded 0.5000000000000001 down to 0 where
+ * Python gives 1.
+ */
 export function roundHalfEven(x) {
   const f = Math.floor(x);
-  const d = x - f;
-  if (Math.abs(d - 0.5) > Number.EPSILON * 8) return Math.round(x);
+  if (x - f !== 0.5) return Math.round(x);
   return f % 2 === 0 ? f : f + 1;
 }
 
@@ -82,6 +89,16 @@ export function readFit(u8) {
   const header = u8.subarray(0, headerSize);
   const end = headerSize + dataSize;
   if (end + 2 > u8.length) throw new Error('data_size does not match the file size');
+
+  // FIT allows several header/data/CRC chunks concatenated into one file.
+  // Nothing here handles that, and quietly returning only the first chunk
+  // would mean writeFit emits a third of the input with no warning.
+  if (end + 2 < u8.length) {
+    throw new Error(
+      `${u8.length - end - 2} bytes past the end of the data section ` +
+        '-- chained FIT files are not supported',
+    );
+  }
 
   const frames = [];
   const localDefs = new Array(16).fill(null);
@@ -116,6 +133,11 @@ export function readFit(u8) {
       const globalNum = littleEndian ? dv.getUint16(p + 3, true) : dv.getUint16(p + 3, false);
       const nFields = u8[p + 5];
       let q = p + 6;
+      // Bounds-check before reading descriptors. Past the buffer u8[q] is
+      // undefined, so `offset` becomes NaN, `def.size` becomes NaN, `p`
+      // becomes NaN and the loop exits -- having silently parsed one frame of
+      // a thirty-frame file, with no error raised anywhere.
+      if (q + nFields * 3 > end) throw new Error('definition message runs past the data section');
       const fields = [];
       let offset = 1;
       for (let i = 0; i < nFields; i++, q += 3) {
@@ -127,6 +149,7 @@ export function readFit(u8) {
         // developer fields
         const nDev = u8[q];
         q += 1;
+        if (q + nDev * 3 > end) throw new Error('developer field block runs past the data section');
         for (let i = 0; i < nDev; i++, q += 3) offset += u8[q + 1];
       }
       const def = { globalNum, littleEndian, fields, size: offset - 1 };
@@ -147,6 +170,14 @@ export function readFit(u8) {
     }
   }
 
+  // The records must tile the data section exactly. Overshooting means the
+  // last record swallowed the trailing CRC, and writeFit would then emit a
+  // longer file with the old CRC promoted into the payload -- silently, and
+  // still passing checkIntegrity, because that only re-CRCs the raw bytes.
+  if (p !== end) {
+    throw new Error(`records end at ${p}, data section ends at ${end} -- file is malformed`);
+  }
+
   return { header, frames, fileCrc: dv.getUint16(end, true) };
 }
 
@@ -157,12 +188,20 @@ const findField = (def, num) => def.fields.find((f) => f.num === num) ?? null;
 export function getField(frame, num, index = 0) {
   const f = findField(frame.def, num);
   if (!f) return null;
-  const [, sz, invalid, signed] = baseInfo(f.base);
+  const [name, sz, invalid, signed] = baseInfo(f.base);
   const n = Math.floor(f.size / sz);
-  if (index >= n) return null;
+  if (index < 0 || index >= n) return null;
   const dv = new DataView(frame.bytes.buffer, frame.bytes.byteOffset, frame.bytes.byteLength);
   const le = frame.def.littleEndian;
   const at = f.offset + index * sz;
+
+  // float32 is four bytes but emphatically not a uint32: reading it as one
+  // returns the IEEE-754 bit pattern, so 12.5 comes back as 1095237632.
+  if (name === 'float32') {
+    const v = dv.getFloat32(at, le);
+    return Number.isNaN(v) ? null : v;
+  }
+
   let v;
   switch (sz) {
     case 1:
@@ -196,15 +235,28 @@ export function patchFrame(frame, values) {
   for (const [numStr, val] of Object.entries(values)) {
     const f = findField(frame.def, Number(numStr));
     if (!f) throw new Error(`field ${numStr} missing in message ${frame.globalNum}`);
-    const [, sz, invalid, signed] = baseInfo(f.base);
+    const [name, sz, invalid, signed] = baseInfo(f.base);
     const n = Math.floor(f.size / sz);
     const arr = Array.isArray(val) ? val.slice(0, n) : [val];
     while (arr.length < n) arr.push(undefined);
     for (let i = 0; i < n; i++) {
       const raw = arr[i];
       if (raw === undefined) continue; // leave this element as is
-      const v = raw === null ? invalid : roundHalfEven(raw);
       const at = f.offset + i * sz;
+
+      // Floats are stored, not rounded. Going through roundHalfEven and
+      // setUint32 wrote the integer 12 for 12.5, which reads back as 1.68e-44.
+      if (name === 'float32') {
+        dv.setFloat32(at, raw === null ? Number.NaN : raw, le);
+        continue;
+      }
+
+      const v = raw === null ? invalid : roundHalfEven(raw);
+      if (!Number.isFinite(v)) {
+        // DataView coerces NaN and +/-Infinity to 0, so an arithmetic slip
+        // upstream would be written as a confident real value.
+        throw new Error(`field ${numStr} in message ${frame.globalNum}: refusing to write ${raw}`);
+      }
       switch (sz) {
         case 1:
           signed ? dv.setInt8(at, v) : dv.setUint8(at, v);
@@ -231,7 +283,12 @@ export function writeFit(header, frameBytes) {
   out.set(header, 0);
   const dv = new DataView(out.buffer);
   dv.setUint32(4, bodyLen, true);
-  if (header.length >= 14) dv.setUint16(12, crc16(out.subarray(0, 12)), true);
+  // A header CRC of 0x0000 means "not present" and is legal; recomputing it
+  // would change bytes on a file that asked us not to, breaking the no-op
+  // roundtrip guarantee for inputs Garmin happens never to produce.
+  if (header.length >= 14 && dv.getUint16(12, true) !== 0) {
+    dv.setUint16(12, crc16(out.subarray(0, 12)), true);
+  }
   let p = header.length;
   for (const b of frameBytes) {
     out.set(b, p);
