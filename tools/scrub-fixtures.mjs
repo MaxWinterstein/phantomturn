@@ -24,13 +24,27 @@ import { basename } from 'node:path';
 import { anonymize, audit } from '../packages/fitfix/src/anonymize.js';
 
 /**
- * Strings known to have appeared in the original exports. The generic audit in
- * anonymize.js checks structure; this catches a value surviving somewhere the
- * structural check does not look, including unknown Garmin message types.
+ * Strings known to have appeared in your own exports -- a name, a watch serial,
+ * a sensor id. `audit()` checks structure; this is an independent cross-check
+ * that catches a literal value surviving somewhere the structure check does not
+ * think to look.
  *
- * Add whatever was in your own file before contributing a fixture.
+ * Deliberately NOT committed. These were hardcoded here at first, which made
+ * the privacy guard publish the serial number it was guarding -- fine while
+ * the repository is private, not fine afterwards. Put your own values in
+ * `tools/needles.local.json` (gitignored) as a JSON array of strings.
  */
-const NEEDLES = ['Max', 'Winterstein', 'REDACTED-SERIAL', 'REDACTED-SENSOR', 'REDACTED-POOL', '_ACTIVITY'];
+async function loadNeedles() {
+  try {
+    const raw = await readFile(new URL('./needles.local.json', import.meta.url), 'utf8');
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((n) => typeof n === 'string' && n) : [];
+  } catch {
+    return []; // absent is the normal case for anyone but the file's owner
+  }
+}
+
+const NEEDLES = await loadNeedles();
 
 function check(u8) {
   const problems = audit(u8);

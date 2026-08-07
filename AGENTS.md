@@ -46,8 +46,14 @@ task fixtures:check
 
 Rename it. A Garmin export is called `<activityId>_ACTIVITY.fit`, and that id
 resolves to a real activity on connect.garmin.com — the filename is personal
-data too. Then add whatever text was in *your* file to `NEEDLES` in
-`tools/scrub-fixtures.mjs`.
+data too.
+
+Then put whatever literal strings were in *your* file — your name, the watch
+serial, sensor ids — into `tools/needles.local.json`, a gitignored JSON array.
+`scrub-fixtures.mjs` uses them as a text cross-check independent of the
+structural audit. They live in an untracked file because hardcoding them is
+self-defeating: the first version of this list carried the serial number it
+existed to protect, in a repository intended to go public.
 
 The logic lives in `packages/fitfix/src/anonymize.js` — browser-safe, imports
 nothing but `fit-patch.js` — because the same function powers the "Download

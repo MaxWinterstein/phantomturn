@@ -14,3 +14,8 @@ dist/
 # bug locally because core.ignorecase defaults to true there.
 *.[Ff][Ii][Tt]
 !packages/fitfix/test/fixtures/*.[Ff][Ii][Tt]
+
+# Your own name, watch serial and sensor ids, for the text cross-check in
+# tools/scrub-fixtures.mjs. Committing these would make the privacy guard
+# publish the values it exists to protect.
+tools/needles.local.json
