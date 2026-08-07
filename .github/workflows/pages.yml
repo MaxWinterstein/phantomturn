@@ -1,21 +1,14 @@
 name: Deploy to GitHub Pages
 
-# Currently manual only. GitHub Pages needs a public repository on free plans,
-# and this repository is private.
-#
-# To switch it on:
-#   1. make the repository public
-#   2. Settings -> Pages -> Source: "GitHub Actions"
-#   3. uncomment the `workflow_run` trigger below
-#
-# Note it triggers on CI *completing*, not on push: deploying straight from a
-# push would publish a broken build at the same moment CI went red.
+# Triggers on CI *completing*, not on push: deploying straight from a push
+# would publish a broken build at the same moment CI went red. The build job
+# below refuses to run unless that CI run succeeded.
 on:
   workflow_dispatch:
-  # workflow_run:
-  #   workflows: [CI]
-  #   types: [completed]
-  #   branches: [main]
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
 
 permissions:
   contents: read
