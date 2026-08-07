@@ -1,7 +1,11 @@
 # 🌊 phantomturn
 
+### → [maxwinterstein.github.io/phantomturn](https://maxwinterstein.github.io/phantomturn/)
+
 Fixes phantom turn detection and stroke misclassification in Garmin pool swim
-FIT files. Runs entirely in your browser — the file never leaves the page.
+FIT files. **Nothing to install** — open the link, drop your `.fit` file in,
+download the fixed one. It runs entirely in your browser and the file never
+leaves the page.
 
 > [!IMPORTANT]
 > ### 🧪 A living experiment, and 100% vibe coded
@@ -37,8 +41,10 @@ Three real sessions, all Forerunner 265 in a 50 m pool:
 
 ## Use it
 
-**Browser:** open the page, drop in a `.fit` file, download the fixed one.
-Nothing is uploaded anywhere.
+**Browser — no install, no build:**
+[maxwinterstein.github.io/phantomturn](https://maxwinterstein.github.io/phantomturn/).
+Drop in a `.fit` file, download the fixed one. Nothing is uploaded anywhere.
+There is a sample swim on the page if you want to try it without your own data.
 
 The same page will also hand you an **anonymized copy** of whatever you drop
 in. It keeps only the messages a swim analysis actually reads and drops
@@ -112,6 +118,9 @@ unchanged, get identical bytes.
 kept self-contained so it can move out to its own repository later.
 
 ## Development
+
+Only needed if you want to change it — for using it, the
+[hosted page](https://maxwinterstein.github.io/phantomturn/) is the whole thing.
 
 ```sh
 task setup    # npm install (Biome is the only dev dependency)
