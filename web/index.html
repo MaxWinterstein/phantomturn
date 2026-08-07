@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>phantomturn — fix Garmin pool swim files</title>
+    <meta
+      name="description"
+      content="Fixes phantom turn detection and stroke misclassification in Garmin pool swim FIT files. Runs entirely in your browser."
+    />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌊</text></svg>"
+    />
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div class="page">
+      <header class="hero">
+        <h1>🌊 phantomturn</h1>
+        <p class="tagline">
+          Your watch counted turns that never happened. This puts the numbers back.
+        </p>
+        <p class="privacy">🔒 Runs entirely in your browser — the file never leaves this page.</p>
+
+        <aside class="experiment">
+          <p>
+            🧪 <strong>A living experiment, and 100% vibe coded.</strong> Every line here was
+            written by an AI — I haven't read any of it, and that's rather the point. I keep
+            swimming and keep feeding it new files, so the defaults will keep moving.
+          </p>
+          <p class="experiment-sub">
+            A test suite and byte-exact comparison against a separate implementation stand in
+            for a human having reviewed it. That isn't the same thing.
+            <strong>Keep your original file.</strong>
+          </p>
+        </aside>
+      </header>
+
+      <main>
+        <label class="dropzone" id="dropzone">
+          <input type="file" id="picker" accept=".fit,application/octet-stream" hidden />
+          <span class="dropzone-icon" aria-hidden="true">📄</span>
+          <span class="dropzone-title">Drop your <code>.fit</code> file here</span>
+          <span class="dropzone-hint">or click to choose one</span>
+        </label>
+
+        <p class="sample-line">
+          No file to hand?
+          <button class="sample" id="sample" type="button">🏊 Try a sample swim</button>
+        </p>
+
+        <p class="error" id="error" hidden></p>
+
+        <section class="result" id="result" hidden>
+          <div class="result-head">
+            <span class="filename" id="filename"></span>
+            <button class="reset" id="reset" type="button">Choose another</button>
+          </div>
+
+          <div class="stats" id="stats"></div>
+
+          <p class="assumption" id="assumption"></p>
+
+          <details class="options">
+            <summary>
+              ⚙️ Assumptions
+              <span class="options-badge" id="optionsBadge" hidden></span>
+            </summary>
+            <div class="options-body">
+              <p class="options-intro">
+                Every default here was calibrated on one swimmer, a Forerunner 265 and a 50 m
+                pool. If your numbers come out wrong, this is where to fix them.
+              </p>
+
+              <label class="option">
+                <span class="option-label">Lengths per lap button press</span>
+                <input type="number" id="lengthsPerLap" min="1" max="64" step="1" />
+                <span class="option-help">
+                  How many pool lengths one press of the lap button covers. Anything beyond this
+                  in a single lap is treated as a phantom turn and merged away. Set it high — or
+                  to your interval length — if you don't lap once per length.
+                </span>
+              </label>
+
+              <label class="option">
+                <span class="option-label">Breaststroke above … strokes per length</span>
+                <input type="number" id="strokeSplit" min="1" max="500" step="1" />
+                <span class="option-help">
+                  Depends on your stroke length <em>and</em> the pool. Roughly halve it for a
+                  25 m pool.
+                </span>
+              </label>
+
+              <label class="option">
+                <span class="option-label">… and above … seconds per length</span>
+                <input type="number" id="durationSplit" min="1" max="900" step="1" />
+                <span class="option-help">
+                  A cross-check on the stroke count. When the two disagree the lap is reported as
+                  ambiguous and the watch's own label is kept.
+                </span>
+              </label>
+
+              <label class="option option-check">
+                <input type="checkbox" id="reclassifyStroke" />
+                <span class="option-label">Reclassify stroke</span>
+                <span class="option-help">
+                  Overrides the watch's stroke classification with the thresholds above.
+                </span>
+              </label>
+
+              <label class="option option-check">
+                <input type="checkbox" id="normalizeElapsed" />
+                <span class="option-label">Trim elapsed time to timer time</span>
+                <span class="option-help">
+                  Drops the gap between stopping the timer and saving. Only applied when the
+                  timer was never paused.
+                </span>
+              </label>
+
+              <button class="link-button" id="resetOptions" type="button">Reset to defaults</button>
+            </div>
+          </details>
+
+          <div class="findings" id="findings"></div>
+
+          <button class="download" id="download" type="button">⬇️ Download fixed file</button>
+        </section>
+
+        <section class="share" id="share" hidden>
+          <h2>🕶️ Sharing this file?</h2>
+          <p>
+            A Garmin export carries your name, a biometric profile, your watch's serial number, a
+            per-second heart-rate trace and the exact date you swam. This keeps only what a swim
+            analysis reads and throws the rest away — durations, distances and stroke counts stay
+            exact, so the file still reproduces the same problem.
+          </p>
+          <ul class="removed" id="removed"></ul>
+          <button class="secondary" id="anonymize" type="button">
+            ⬇️ Download anonymized copy
+          </button>
+        </section>
+      </main>
+
+      <footer>
+        <p class="signature">
+          Made with <span class="heart" aria-hidden="true">❤️</span> and chlorine by
+          <a href="https://github.com/MaxWinterstein">Max Winterstein</a>
+        </p>
+        <p class="signature-aside">Lap count not guaranteed.</p>
+        <p class="footer-links">
+          <a href="https://github.com/MaxWinterstein/phantomturn">Source on GitHub</a>
+          <span class="dot">·</span>
+          <span>MIT</span>
+          <span class="dot">·</span>
+          <span>Not affiliated with Garmin</span>
+        </p>
+      </footer>
+    </div>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

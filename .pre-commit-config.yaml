@@ -1,0 +1,45 @@
+# Managed with prek (https://github.com/j178/prek), a drop-in replacement for
+# pre-commit. Install the hooks with `task hooks`.
+#
+# The hook that matters is fixture-privacy. .gitignore already hides *.fit
+# outside the fixtures directory, but a `git add -f` walks straight past that,
+# and a Garmin export carries the owner's name, biometrics and watch serial.
+# This is the last line of defence -- see AGENTS.md.
+
+repos:
+  - repo: local
+    hooks:
+      # (?i) matters: the watch writes *.FIT in uppercase.
+      - id: fixture-privacy
+        name: no personal data in FIT files
+        entry: node tools/scrub-fixtures.mjs --check
+        language: system
+        files: (?i)\.fit$
+        pass_filenames: true
+
+      # The Biome pinned in package.json, called directly rather than through
+      # npx: npx would happily download a different version if node_modules is
+      # missing, and silent version drift is worse than a clear failure.
+      # Run `task setup` first.
+      - id: biome
+        name: biome check
+        entry: node_modules/.bin/biome check --no-errors-on-unmatched
+        language: system
+        types_or: [javascript, css, json]
+        pass_filenames: true
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: \.fit$
+      - id: end-of-file-fixer
+        exclude: \.fit$
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: check-json
+        # biome.jsonc is JSONC; comments are intentional and valid there.
+        exclude: \.jsonc$
+      - id: check-added-large-files
+        args: [--maxkb=256]
+        exclude: \.fit$

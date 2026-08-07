@@ -1,0 +1,31 @@
+{
+  "name": "phantomturn",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Fix phantom turn detection and stroke misclassification in Garmin pool swim FIT files - runs entirely in your browser",
+  "type": "module",
+  "license": "MIT",
+  "author": "Max Winterstein",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MaxWinterstein/phantomturn.git"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test \"packages/fitfix/test/*.test.mjs\"",
+    "fmt": "biome format --write .",
+    "fmt:check": "biome format .",
+    "lint": "biome check .",
+    "build": "node tools/build-web.mjs",
+    "serve": "node tools/serve.mjs",
+    "fixtures:check": "node tools/scrub-fixtures.mjs --check packages/fitfix/test/fixtures/*.fit"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.7"
+  }
+}

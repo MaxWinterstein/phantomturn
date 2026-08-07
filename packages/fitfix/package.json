@@ -1,0 +1,26 @@
+{
+  "name": "fitfix",
+  "version": "0.1.0",
+  "description": "Repairs length and turn detection in Garmin pool swim FIT files. No dependencies, runs in Node and in the browser.",
+  "type": "module",
+  "license": "MIT",
+  "main": "src/swim-repair.js",
+  "exports": {
+    ".": "./src/swim-repair.js",
+    "./fit-patch": "./src/fit-patch.js",
+    "./anonymize": "./src/anonymize.js"
+  },
+  "bin": {
+    "fitfix": "src/cli.mjs"
+  },
+  "files": [
+    "src"
+  ],
+  "keywords": [
+    "garmin",
+    "fit-file",
+    "swimming",
+    "fitness-tracker"
+  ],
+  "dependencies": {}
+}

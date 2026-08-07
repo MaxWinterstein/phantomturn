@@ -1,0 +1,44 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.7/schema.json",
+  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "files": {
+    "includes": ["**", "!dist", "!**/*.fit", "!package-lock.json"]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "single",
+      "semicolons": "always",
+      "trailingCommas": "all",
+      "arrowParentheses": "always"
+    }
+  },
+  "json": {
+    "formatter": { "lineWidth": 120 }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      "complexity": {
+        // The FIT base type IDs are hexadecimal in the specification --
+        // 0x83 is sint16, 0x8c is uint32z. Rewriting them as decimal would
+        // cut the only link between this table and the spec it transcribes.
+        "useSimpleNumberKeys": "off"
+      },
+      "style": {
+        // Reassigning a loop cursor is the clearest way to walk a byte buffer.
+        "noParameterAssign": "off"
+      },
+      "suspicious": {
+        // `(a[fr.kind]++, a)` in a reduce is deliberate and local.
+        "noAssignInExpressions": "off"
+      }
+    }
+  }
+}

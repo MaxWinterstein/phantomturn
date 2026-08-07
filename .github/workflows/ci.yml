@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Lint and format check
+        run: npx biome ci .
+
+      - name: Tests
+        run: node --test "packages/fitfix/test/*.test.mjs"
+
+      # Guards against personal data reaching the repository. See AGENTS.md.
+      # Driven off git ls-files, not a directory glob: a .fit committed
+      # anywhere else is exactly the case worth catching, and the watch names
+      # its files in uppercase.
+      - name: Fixture privacy check
+        run: |
+          files=$(git ls-files '*.fit' '*.FIT' '*.Fit')
+          if [ -z "$files" ]; then echo "no .fit files tracked"; exit 0; fi
+          echo "$files"
+          node tools/scrub-fixtures.mjs --check $files
+
+      - name: Site builds
+        run: node tools/build-web.mjs

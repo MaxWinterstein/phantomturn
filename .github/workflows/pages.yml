@@ -1,0 +1,54 @@
+name: Deploy to GitHub Pages
+
+# Currently manual only. GitHub Pages needs a public repository on free plans,
+# and this repository is private.
+#
+# To switch it on:
+#   1. make the repository public
+#   2. Settings -> Pages -> Source: "GitHub Actions"
+#   3. uncomment the `push` trigger below
+on:
+  workflow_dispatch:
+  # push:
+  #   branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never cancel a running deployment; queue behind it instead.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - run: node tools/build-web.mjs
+
+      # The site ships a sample .fit file. Refuse to publish if it is not clean.
+      - name: Fixture privacy check
+        run: node tools/scrub-fixtures.mjs --check dist/sample/*.fit
+
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

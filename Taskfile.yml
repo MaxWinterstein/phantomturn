@@ -1,0 +1,88 @@
+version: '3'
+
+# Everything here runs on plain Node 22+ and npm. The only dev dependency is
+# Biome; the library itself has none and never will.
+#
+# Commands are written as block sequences rather than [flow, style]: a `{` is
+# the start of a flow mapping in YAML, so `{{.CLI_ARGS}}` inside brackets is a
+# parse error.
+
+tasks:
+  default:
+    desc: Show available tasks
+    silent: true
+    cmds:
+      - task --list
+
+  setup:
+    desc: Install dev dependencies and git hooks
+    cmds:
+      - node --version
+      - npm install
+      # Best effort: prek is optional, the checks all run via `task check` too.
+      - cmd: prek install
+        ignore_error: true
+
+  hooks:
+    desc: Install the prek git hooks (https://github.com/j178/prek)
+    cmds:
+      - prek install
+
+  hooks:run:
+    desc: Run every hook against every file, not just staged ones
+    cmds:
+      - prek run --all-files
+
+  test:
+    desc: Run the test suite
+    cmds:
+      - node --test "packages/fitfix/test/*.test.mjs"
+
+  fmt:
+    desc: Format everything
+    cmds:
+      - node_modules/.bin/biome format --write .
+
+  lint:
+    desc: Lint and check formatting without writing
+    cmds:
+      - node_modules/.bin/biome check .
+
+  check:
+    desc: Everything CI runs - lint, tests, fixture privacy check
+    deps:
+      - lint
+      - test
+      - 'fixtures:check'
+
+  build:
+    desc: Assemble the static site into dist/
+    cmds:
+      - node tools/build-web.mjs
+
+  web:
+    desc: 'Build and serve the site at http://localhost:8080'
+    deps:
+      - build
+    cmds:
+      - node tools/serve.mjs
+
+  fix:
+    desc: 'Repair a file from the CLI: task fix -- swim.fit'
+    cmds:
+      - node packages/fitfix/src/cli.mjs {{.CLI_ARGS}}
+
+  fixtures:check:
+    desc: Verify no personal data made it into the test fixtures
+    cmds:
+      - node tools/scrub-fixtures.mjs --check packages/fitfix/test/fixtures/*.fit
+
+  fixtures:scrub:
+    desc: 'Scrub a file in place before it becomes a fixture: task fixtures:scrub -- new.fit'
+    cmds:
+      - node tools/scrub-fixtures.mjs {{.CLI_ARGS}}
+
+  clean:
+    desc: Remove build output and dependencies
+    cmds:
+      - rm -rf dist node_modules

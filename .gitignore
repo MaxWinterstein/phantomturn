@@ -1,0 +1,16 @@
+node_modules/
+dist/
+*.log
+.DS_Store
+.env
+
+# Never commit a raw activity file. Garmin exports carry the owner's name, a
+# biometric profile, the watch serial number and the exact date of the session.
+# The only .fit files allowed in this repo are the scrubbed test fixtures --
+# see AGENTS.md and tools/scrub-fixtures.mjs.
+# Case-folded on purpose: Garmin writes GARMIN/ACTIVITY/*.FIT in uppercase on
+# the watch itself, and a plain `*.fit` misses it on any case-sensitive
+# filesystem -- which is every Linux box and every CI runner. macOS hides the
+# bug locally because core.ignorecase defaults to true there.
+*.[Ff][Ii][Tt]
+!packages/fitfix/test/fixtures/*.[Ff][Ii][Tt]
