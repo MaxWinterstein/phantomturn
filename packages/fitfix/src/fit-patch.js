@@ -192,7 +192,15 @@ export function readFit(u8) {
 // ---------------------------------------------------------- read/write fields
 const findField = (def, num) => def.fields.find((f) => f.num === num) ?? null;
 
-/** Raw value of a field; null if absent or invalid. */
+/**
+ * Raw value of a field; null if absent or invalid.
+ *
+ * CAVEAT: 64-bit base types also return null, indistinguishable from absent.
+ * They cannot be read through DataView's integer accessors without BigInt, and
+ * patchFrame cannot write them either. Anything auditing a file for content
+ * must therefore treat a 64-bit field as *unknown*, not as empty --
+ * anonymize.js reports them explicitly for exactly this reason.
+ */
 export function getField(frame, num, index = 0) {
   const f = findField(frame.def, num);
   if (!f) return null;

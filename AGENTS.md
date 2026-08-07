@@ -159,7 +159,7 @@ for screenshots and for checking a deploy.
 
 - **`lengthsPerLap` is honoured by `repair()`, but only downwards.** A lap with
   more lengths than the target is merged down via `mergeToTarget()`, which
-  greedily combines the shortest adjacent pair. A lap with *fewer* is left
+  picks the most even grouping. A lap with *fewer* is left
   alone — nothing is ever split. It used to be reporting-only while `repair()`
   always merged to one regardless; do not let it regress to that.
 - **The `lap-structure` finding is the guard against a wrong target.** It fires when more

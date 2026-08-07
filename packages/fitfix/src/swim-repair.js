@@ -412,14 +412,25 @@ export function repair(u8, opts = {}) {
           (a, j) => a + (getField(lengths[j], F.length.strokes) ?? 0),
           0,
         );
-        const spec = { [F.length.messageIndex]: idx };
-        if (group.length > 1) {
-          spec[F.length.elapsed] = durMs;
-          spec[F.length.timer] = durMs;
-          spec[F.length.strokes] = strokes;
-          spec[F.length.avgSpeed] = (poolM / (durMs / 1000)) * 1000;
-          spec[F.length.cadence] = (strokes * 60) / (durMs / 1000);
-        }
+        /*
+         * Written for every surviving length, not only merged ones.
+         *
+         * The Python reference writes them unconditionally, and skipping the
+         * single-length case is invisible on these fixtures purely because the
+         * watch's own stored values already equal the recomputation. It stops
+         * being invisible the moment one does not: a length whose
+         * total_strokes is invalid keeps that invalid marker while the lap
+         * counts it as zero strokes, leaving the file self-contradictory.
+         */
+        const durS = durMs / 1000;
+        const spec = {
+          [F.length.messageIndex]: idx,
+          [F.length.elapsed]: durMs,
+          [F.length.timer]: durMs,
+          [F.length.strokes]: strokes,
+          [F.length.avgSpeed]: durS > 0 ? (poolM / durS) * 1000 : 0,
+          [F.length.cadence]: durS > 0 ? (strokes * 60) / durS : 0,
+        };
         if (o.reclassifyStroke)
           spec[F.length.swimStroke] =
             SWIM_STROKE[strokes >= o.strokeSplit ? 'breaststroke' : 'freestyle'];

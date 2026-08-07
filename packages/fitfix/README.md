@@ -71,10 +71,13 @@ this is a report, not a refusal.
 | `normalizeElapsed` | `true`  | Set elapsed time to timer time when never paused     |
 
 `lengthsPerLap` only ever merges *downwards*. A lap holding more lengths than
-the target is collapsed by `mergeToTarget()`, which repeatedly combines the
-adjacent pair with the smallest combined duration — a phantom turn splits one
-length into two short halves, so that pair is the likeliest split. A lap
-holding fewer is left untouched; nothing is ever split apart.
+the target is collapsed by `mergeToTarget()`, which picks the most even
+grouping — it minimises the sum of the squared group durations, and for a fixed
+total that is smallest when the groups are equal. Real lengths in one lap take
+roughly the same time, and a phantom turn splits one into two short halves, so
+the most balanced partition is the one that puts the halves back together. A
+lap holding fewer lengths than the target is left untouched; nothing is ever
+split apart.
 
 ```js
 repair(bytes);                        // 200 m over 4 lengths

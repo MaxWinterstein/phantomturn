@@ -593,6 +593,16 @@ body.dragging::after {
   color: var(--accent);
 }
 
+.share-where {
+  margin: 0.7rem 0 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.share-where a {
+  color: var(--accent);
+}
+
 .nothing {
   padding: 1.25rem;
   border: 1px solid var(--border);
