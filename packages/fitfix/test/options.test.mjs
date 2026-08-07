@@ -10,22 +10,58 @@ import test from 'node:test';
 import { analyze, mergeToTarget, repair } from '../src/swim-repair.js';
 import { firstDiff, ORIGINALS, readFixture } from './fixtures.mjs';
 
-test('mergeToTarget collapses the shortest adjacent pair first', () => {
-  // A phantom turn splits one length into two short halves, so the pair that
-  // adds up to about one normal length is the one to merge.
-  const durations = { 0: 110, 1: 55, 2: 55, 3: 108 };
-  const durationOf = (k) => durations[k];
+test('mergeToTarget produces the most even grouping, not a greedy one', () => {
+  const of = (table) => (k) => table[k];
 
-  assert.deepEqual(mergeToTarget([0, 1, 2, 3], 3, durationOf), [[0], [1, 2], [3]]);
-  assert.deepEqual(mergeToTarget([0, 1, 2, 3], 1, durationOf), [[0, 1, 2, 3]]);
+  // The case the old greedy rule got wrong: two real lengths, both split by a
+  // phantom turn. Merging the smallest adjacent pair (25+25) straddles the
+  // true boundary and every later merge inherits that mistake.
+  assert.deepEqual(mergeToTarget([0, 1, 2, 3], 2, of([30, 25, 25, 30])), [
+    [0, 1],
+    [2, 3],
+  ]);
 
-  // Never splits, only merges: asking for more than you have is a no-op.
-  assert.deepEqual(mergeToTarget([0, 1], 5, durationOf), [[0], [1]]);
-  assert.deepEqual(mergeToTarget([], 1, durationOf), []);
+  // One split length among whole ones -- the halves still pair up.
+  assert.deepEqual(mergeToTarget([0, 1, 2, 3], 3, of([110, 55, 55, 108])), [[0], [1, 2], [3]]);
+  assert.deepEqual(mergeToTarget([0, 1, 2, 3], 2, of([110, 55, 55, 108])), [
+    [0, 1],
+    [2, 3],
+  ]);
 
-  // Groups stay contiguous and keep every index exactly once.
-  const groups = mergeToTarget([0, 1, 2, 3], 2, durationOf);
-  assert.deepEqual(groups.flat(), [0, 1, 2, 3]);
+  assert.deepEqual(mergeToTarget([0, 1, 2, 3], 1, of([110, 55, 55, 108])), [[0, 1, 2, 3]]);
+
+  // Never splits: asking for more groups than you have is a no-op.
+  assert.deepEqual(mergeToTarget([0, 1], 5, of([1, 1])), [[0], [1]]);
+  assert.deepEqual(mergeToTarget([], 1, of([])), []);
+
+  // A non-numeric target means "merge everything" rather than silently
+  // disabling the merge, which is what NaN used to do.
+  assert.deepEqual(mergeToTarget([0, 1, 2], Number.NaN, of([1, 1, 1])), [[0, 1, 2]]);
+  assert.deepEqual(mergeToTarget([0, 1, 2], undefined, of([1, 1, 1])), [[0, 1, 2]]);
+
+  // Contiguous, every index exactly once, in order.
+  const groups = mergeToTarget([0, 1, 2, 3, 4], 3, of([9, 1, 8, 2, 7]));
+  assert.deepEqual(groups.flat(), [0, 1, 2, 3, 4]);
+  assert.equal(groups.length, 3);
+});
+
+test('mergeToTarget stays fast on a pathological lap', () => {
+  // The default target short-circuits, so the common path is linear however
+  // many lengths a crafted file crams into one lap. Above the search bound it
+  // falls back to equal chunks rather than blocking the main thread.
+  const of = (k) => (k % 7) + 1;
+
+  const started = performance.now();
+  const single = mergeToTarget([...Array(20_000).keys()], 1, of);
+  const elapsed = performance.now() - started;
+
+  assert.equal(single.length, 1);
+  assert.equal(single[0].length, 20_000);
+  assert.ok(elapsed < 250, `20k lengths took ${elapsed.toFixed(0)}ms`);
+
+  const chunked = mergeToTarget([...Array(5_000).keys()], 4, of);
+  assert.equal(chunked.length, 4);
+  assert.equal(chunked.flat().length, 5_000);
 });
 
 test('lengthsPerLap changes how much distance survives', async () => {

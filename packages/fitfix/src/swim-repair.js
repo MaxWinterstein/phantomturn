@@ -62,14 +62,24 @@ export const DEFAULTS = {
  * Collapses a lap's active lengths down to `target` of them.
  *
  * Returns contiguous groups of the original indices; each group becomes one
- * length. With the default target of 1 everything ends up in a single group,
- * which is the "one lap button press per length" case.
+ * length. Never splits: a lap already at or under the target comes back as
+ * singletons.
  *
- * Above 1, the groups are found greedily: repeatedly merge whichever adjacent
- * pair has the smallest combined duration, until `target` groups remain. A
- * phantom turn splits one real length into two short halves whose durations
- * add up to roughly one normal length, so the shortest adjacent pair is
- * exactly the pair most likely to be a split length.
+ * The groups are chosen to make the resulting lengths as even as possible, by
+ * minimising the sum of the squared group durations -- for a fixed total, that
+ * sum is smallest when the groups are equal. Real lengths in one lap take
+ * roughly the same time, and a phantom turn splits one of them into two short
+ * halves, so the most balanced partition is the one that puts the halves back
+ * together.
+ *
+ * This replaced a greedy "merge the shortest adjacent pair" rule, which is
+ * wrong on the very case it was written for. Two real lengths, both split:
+ *
+ *     [30, 25, 25, 30] target 2
+ *       greedy   -> [[30,25,25],[30]]   the smallest pair straddles the
+ *                                       true boundary, and every later
+ *                                       merge inherits the mistake
+ *       balanced -> [[30,25],[25,30]]
  *
  * @param {number[]} indices  active length indices, in time order
  * @param {number} target     how many lengths the lap should end up with
@@ -77,20 +87,59 @@ export const DEFAULTS = {
  * @returns {number[][]}
  */
 export function mergeToTarget(indices, target, durationOf) {
-  const groups = indices.map((k) => [k]);
-  const total = (g) => g.reduce((a, k) => a + (durationOf(k) ?? 0), 0);
+  // Anything non-numeric means "merge everything", which is the default
+  // behaviour -- previously NaN made the loop condition false and silently
+  // disabled merging altogether.
+  const n = Number.isFinite(target) ? Math.max(1, Math.floor(target)) : 1;
 
-  while (groups.length > Math.max(1, target)) {
-    let at = 0;
-    let smallest = Number.POSITIVE_INFINITY;
-    for (let i = 0; i + 1 < groups.length; i++) {
-      const combined = total(groups[i]) + total(groups[i + 1]);
-      if (combined < smallest) {
-        smallest = combined;
-        at = i;
+  if (!indices.length) return [];
+  if (n === 1) return [indices.slice()]; // fast path, and by far the common one
+  if (n >= indices.length) return indices.map((k) => [k]);
+
+  const size = indices.length;
+
+  /*
+   * The partition search is O(target x size^2). Real laps hold a handful of
+   * lengths, but a crafted file can hold thousands, and this runs on the
+   * browser's main thread. Past a sane bound, fall back to equal-sized chunks:
+   * predictable, linear, and no worse than arbitrary for input that is not a
+   * real swim anyway.
+   */
+  if (size > 256) {
+    const chunk = Math.ceil(size / n);
+    const groups = [];
+    for (let i = 0; i < size; i += chunk) groups.push(indices.slice(i, i + chunk));
+    return groups;
+  }
+
+  const prefix = [0];
+  for (const k of indices) prefix.push(prefix[prefix.length - 1] + (durationOf(k) ?? 0));
+
+  // cost[g][j]: best score for splitting the first j lengths into g groups.
+  const cost = Array.from({ length: n + 1 }, () => new Float64Array(size + 1).fill(Infinity));
+  const from = Array.from({ length: n + 1 }, () => new Int32Array(size + 1));
+  cost[0][0] = 0;
+
+  for (let g = 1; g <= n; g++) {
+    for (let j = g; j <= size; j++) {
+      for (let i = g - 1; i < j; i++) {
+        if (cost[g - 1][i] === Infinity) continue;
+        const span = prefix[j] - prefix[i];
+        const score = cost[g - 1][i] + span * span;
+        if (score < cost[g][j]) {
+          cost[g][j] = score;
+          from[g][j] = i;
+        }
       }
     }
-    groups.splice(at, 2, [...groups[at], ...groups[at + 1]]);
+  }
+
+  const groups = [];
+  let end = size;
+  for (let g = n; g > 0; g--) {
+    const start = from[g][end];
+    groups.unshift(indices.slice(start, end));
+    end = start;
   }
   return groups;
 }
@@ -139,9 +188,36 @@ export function analyze(u8, opts = {}) {
       .map((_, k) => k)
       .filter((k) => {
         const t = getField(lengths[k], F.length.startTime);
-        return t >= s && t < e;
+        return t !== null && t >= s && t < e;
       }),
   );
+
+  /*
+   * The lap windows have to partition the lengths, not merely filter them.
+   *
+   * repair() emits exactly the lengths that landed in some lap and drops the
+   * rest, so a length matching no window disappears from the output -- and
+   * with it, its distance. That failed silently in every direction: a single
+   * length with an invalid start_time quietly turned 900 m into 850 m, and a
+   * file with no lap messages at all came back as a valid, integrity-checked,
+   * completely empty activity. Better to refuse than to hand someone a
+   * plausible-looking file with lengths missing.
+   */
+  const assigned = lapLengths.flat();
+  const unique = new Set(assigned);
+  if (assigned.length !== unique.size) {
+    throw new Error(
+      'overlapping laps -- a length falls inside more than one lap, ' +
+        'which means the lap start times are not in order',
+    );
+  }
+  if (unique.size !== lengths.length) {
+    const missing = lengths.length - unique.size;
+    throw new Error(
+      `${missing} of ${lengths.length} lengths belong to no lap; ` +
+        'repairing would silently delete them',
+    );
+  }
 
   const findings = [];
   const swimLaps = [];
@@ -213,7 +289,12 @@ export function analyze(u8, opts = {}) {
     const split = swimLaps.filter((l) => l.lengths > o.lengthsPerLap);
     const maxPerLap = Math.max(...swimLaps.map((l) => l.lengths));
 
-    if (split.length / swimLaps.length > 0.5 || maxPerLap >= 4) {
+    // Both tests are relative to the configured target. An absolute
+    // `maxPerLap >= 4` fired on files where nothing would be merged at all --
+    // with lengthsPerLap: 20, a lap of 10 lengths raised a red "22 lengths
+    // would become 22" warning.
+    const wayOver = maxPerLap >= 4 * o.lengthsPerLap;
+    if (split.length && (split.length / swimLaps.length > 0.5 || wayOver)) {
       findings.push({
         type: 'lap-structure',
         laps: swimLaps.length,
@@ -221,8 +302,11 @@ export function analyze(u8, opts = {}) {
         lengthsAfter: swimLaps.reduce((a, l) => a + Math.min(l.lengths, o.lengthsPerLap), 0),
         maxPerLap,
         note:
-          `${split.length} of ${swimLaps.length} laps hold more than ${o.lengthsPerLap} length. ` +
-          'If you did not press the lap button once per length, merging will delete real distance.',
+          `${split.length} of ${swimLaps.length} laps hold more than ` +
+          `${o.lengthsPerLap} ${o.lengthsPerLap === 1 ? 'length' : 'lengths'}. ` +
+          `If a lap button press does not really cover ${o.lengthsPerLap} ` +
+          `${o.lengthsPerLap === 1 ? 'length' : 'lengths'} for you, merging will delete ` +
+          'real distance.',
       });
     }
   }
@@ -351,15 +435,27 @@ export function repair(u8, opts = {}) {
   const distCm = Math.trunc(active.length * poolM * 100);
   const strokes = active.reduce((a, n) => a + n.strokes, 0);
   const activeMs = active.reduce((a, n) => a + n.durMs, 0);
+
+  /*
+   * Every one of these divides by something that can legitimately be zero -- a
+   * kick set records no strokes, and a file whose lengths are all idle has no
+   * active time at all. patchFrame coerces NaN and +/-Infinity to 0 through
+   * DataView, so an unguarded division writes a confident "0 m/s, 0 m per
+   * stroke" into the file rather than leaving the field invalid. The lap-level
+   * equivalents below were already guarded; the session ones were not.
+   */
+  const ratio = (numerator, denominator) => (denominator > 0 ? numerator / denominator : 0);
   const sessPatch = {
     [F.session.distance]: distCm,
     [F.session.cycles]: strokes,
-    [F.session.avgSpeed]: (distCm / 100 / (activeMs / 1000)) * 1000,
-    [F.session.maxSpeed]: Math.max(...active.map((n) => (poolM / (n.durMs / 1000)) * 1000)),
+    [F.session.avgSpeed]: ratio(distCm / 100, activeMs / 1000) * 1000,
+    [F.session.maxSpeed]: active.length
+      ? Math.max(...active.map((n) => ratio(poolM, n.durMs / 1000) * 1000))
+      : 0,
     [F.session.numLengths]: lapPatches.reduce((a, p) => a + p[F.lap.numLengths], 0),
     [F.session.numActiveLengths]: active.length,
-    [F.session.strokeDistance]: distCm / strokes,
-    [F.session.avgCadence]: (strokes * 60) / (activeMs / 1000),
+    [F.session.strokeDistance]: ratio(distCm, strokes),
+    [F.session.avgCadence]: ratio(strokes * 60, activeMs / 1000),
   };
   if (o.normalizeElapsed && pauses <= 0) sessPatch[F.session.elapsed] = timerMs;
 
