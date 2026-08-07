@@ -353,6 +353,10 @@ export function analyze(u8, opts = {}) {
     lengths: lengths.length,
     swimLaps,
     findings,
+    // Handed to repair() rather than recomputed there. The two copies of this
+    // assignment drifting apart is exactly how analyze() ended up classifying
+    // stroke on the lap total while repair() worked group by group.
+    lapLengths,
   };
 }
 
@@ -360,27 +364,13 @@ export function analyze(u8, opts = {}) {
 export function repair(u8, opts = {}) {
   const o = { ...DEFAULTS, ...opts };
   const info = analyze(u8, o);
-  const { poolM, timerMs, pauses } = info;
+  const { poolM, timerMs, pauses, lapLengths } = info;
   const { header, frames } = readFit(u8);
   const lengths = frames.filter((f) => f.kind === 'data' && f.globalNum === MSG.length);
-  const laps = frames.filter((f) => f.kind === 'data' && f.globalNum === MSG.lap);
 
-  const bounds = laps.map((lap, i) => {
-    const s = getField(lap, F.lap.startTime);
-    const e =
-      i + 1 < laps.length
-        ? getField(laps[i + 1], F.lap.startTime)
-        : s + Math.trunc(getField(lap, F.lap.elapsed) / 1000) + 1;
-    return [s, e];
-  });
-  const lapLengths = bounds.map(([s, e]) =>
-    lengths
-      .map((_, k) => k)
-      .filter((k) => {
-        const t = getField(lengths[k], F.length.startTime);
-        return t >= s && t < e;
-      }),
-  );
+  // lapLengths comes from analyze() rather than being recomputed. The frames
+  // are re-read here, but the filter order is identical, so the indices line
+  // up -- and analyze() has already refused anything where they would not.
 
   // --- new length list: a lap's active lengths get merged down to the
   //     configured number, and the leftovers dropped
