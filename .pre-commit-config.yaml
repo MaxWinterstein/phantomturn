@@ -21,11 +21,21 @@ repos:
       # npx: npx would happily download a different version if node_modules is
       # missing, and silent version drift is worse than a clear failure.
       # Run `task setup` first.
+      # Selected by extension alone. `types_or` and `files` are ANDed, and
+      # prek has no `jsonc` tag and does not treat .jsonc as json, so any
+      # tag-based filter excluded biome.jsonc and web/index.html -- the two
+      # files CI checked and the commit hook never saw.
       - id: biome
         name: biome check
-        entry: node_modules/.bin/biome check --no-errors-on-unmatched
+        # The guard turns a bare ENOENT on a fresh clone into an instruction.
+        # Without it the first thing a new contributor saw was an opaque
+        # "No such file or directory", whose obvious workaround is
+        # `git commit --no-verify` -- which also skips the privacy hook.
+        entry: >-
+          sh -c 'test -x node_modules/.bin/biome || { echo "biome is not installed, run task setup"; exit 1; };
+          exec node_modules/.bin/biome check --no-errors-on-unmatched "$@"' --
         language: system
-        types_or: [javascript, css, json]
+        files: \.(js|mjs|cjs|css|json|jsonc|html)$
         pass_filenames: true
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -37,9 +47,10 @@ repos:
         exclude: \.fit$
       - id: check-merge-conflict
       - id: check-yaml
+      # check-json selects on the `json` tag, which never matches .jsonc in the
+      # first place -- biome.jsonc is validated by the biome hook above.
       - id: check-json
-        # biome.jsonc is JSONC; comments are intentional and valid there.
-        exclude: \.jsonc$
       - id: check-added-large-files
+        # No .fit exclusion: an oversized file is most likely a raw multi-
+        # megabyte export, which is precisely what this should stop.
         args: [--maxkb=256]
-        exclude: \.fit$

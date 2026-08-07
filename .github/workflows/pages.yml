@@ -6,16 +6,19 @@ name: Deploy to GitHub Pages
 # To switch it on:
 #   1. make the repository public
 #   2. Settings -> Pages -> Source: "GitHub Actions"
-#   3. uncomment the `push` trigger below
+#   3. uncomment the `workflow_run` trigger below
+#
+# Note it triggers on CI *completing*, not on push: deploying straight from a
+# push would publish a broken build at the same moment CI went red.
 on:
   workflow_dispatch:
-  # push:
+  # workflow_run:
+  #   workflows: [CI]
+  #   types: [completed]
   #   branches: [main]
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 # Never cancel a running deployment; queue behind it instead.
 concurrency:
@@ -24,19 +27,29 @@ concurrency:
 
 jobs:
   build:
+    # Only publish what CI has already passed. workflow_dispatch has no
+    # originating run, so allow it through explicitly.
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version-file: .nvmrc
 
       - run: node tools/build-web.mjs
 
-      # The site ships a sample .fit file. Refuse to publish if it is not clean.
+      # The site ships a sample .fit. Refuse to publish if anything under dist
+      # is not clean -- scanned recursively, since web/ is copied wholesale.
       - name: Fixture privacy check
-        run: node tools/scrub-fixtures.mjs --check dist/sample/*.fit
+        run: |
+          files=$(find dist -type f \( -iname '*.fit' \))
+          if [ -z "$files" ]; then echo "no .fit files in the build"; exit 0; fi
+          echo "$files"
+          node tools/scrub-fixtures.mjs --check $files
 
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
@@ -46,6 +59,11 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    # Scoped to this job: the build job runs repository code and has no
+    # business holding deploy credentials.
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

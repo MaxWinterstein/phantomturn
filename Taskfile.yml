@@ -19,9 +19,19 @@ tasks:
     cmds:
       - node --version
       - npm install
-      # Best effort: prek is optional, the checks all run via `task check` too.
-      - cmd: prek install
-        ignore_error: true
+      # prek is optional, but say so out loud. Swallowing the failure meant
+      # `task setup` reported success having installed no hooks at all --
+      # including the one that stops personal data being committed.
+      - cmd: |
+          if command -v prek >/dev/null 2>&1; then
+            prek install
+          else
+            echo
+            echo "  !! prek is not installed, so NO git hooks were set up."
+            echo "  !! The fixture privacy check will not run before your commits."
+            echo "  !! Install it: https://github.com/j178/prek  (then: task hooks)"
+            echo
+          fi
 
   hooks:
     desc: Install the prek git hooks (https://github.com/j178/prek)
@@ -49,11 +59,15 @@ tasks:
       - node_modules/.bin/biome check .
 
   check:
-    desc: Everything CI runs - lint, tests, fixture privacy check
-    deps:
-      - lint
-      - test
-      - 'fixtures:check'
+    desc: Everything CI runs - lint, tests, fixture privacy check, site build
+    # Sequential rather than `deps`, which run in parallel and interleave their
+    # output. `build` is here because CI runs it: without it, breaking the site
+    # build passed locally and failed in CI, while three files claimed parity.
+    cmds:
+      - task: lint
+      - task: test
+      - task: 'fixtures:check'
+      - task: build
 
   build:
     desc: Assemble the static site into dist/

@@ -4,6 +4,17 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light dark" />
+    <!--
+      GitHub Pages cannot set response headers, so the policy has to live here.
+      connect-src 'none' is the load-bearing one: it makes "the file never
+      leaves this page" something the browser enforces rather than something
+      the page merely claims. The sample file is read through fetch(), so
+      'self' is needed for that and nothing else.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+    />
     <title>phantomturn — fix Garmin pool swim files</title>
     <meta
       name="description"
@@ -39,8 +50,14 @@
       </header>
 
       <main>
+        <!--
+          The file input is visually hidden but still focusable and still in
+          the tab order. `hidden` would be display:none, which takes the app's
+          primary control out of reach of a keyboard entirely -- the only way
+          in would have been the sample button.
+        -->
         <label class="dropzone" id="dropzone">
-          <input type="file" id="picker" accept=".fit,application/octet-stream" hidden />
+          <input class="visually-hidden" type="file" id="picker" accept=".fit,application/octet-stream" />
           <span class="dropzone-icon" aria-hidden="true">📄</span>
           <span class="dropzone-title">Drop your <code>.fit</code> file here</span>
           <span class="dropzone-hint">or click to choose one</span>
@@ -51,9 +68,11 @@
           <button class="sample" id="sample" type="button">🏊 Try a sample swim</button>
         </p>
 
-        <p class="error" id="error" hidden></p>
+        <p class="busy" id="busy" role="status" hidden>⏳ Working through the file…</p>
 
-        <section class="result" id="result" hidden>
+        <p class="error" id="error" role="alert" hidden></p>
+
+        <section class="result" id="result" aria-live="polite" hidden>
           <div class="result-head">
             <span class="filename" id="filename"></span>
             <button class="reset" id="reset" type="button">Choose another</button>
@@ -74,50 +93,83 @@
                 pool. If your numbers come out wrong, this is where to fix them.
               </p>
 
-              <label class="option">
-                <span class="option-label">Lengths per lap button press</span>
-                <input type="number" id="lengthsPerLap" min="1" max="64" step="1" />
-                <span class="option-help">
+              <!--
+                `for` points at the short label and the long explanation hangs
+                off aria-describedby. Wrapping both in one <label> made the
+                accessible name of each input the whole 250-character
+                paragraph, re-read on every arrow-key nudge.
+              -->
+              <div class="option">
+                <label class="option-label" for="lengthsPerLap">Lengths per lap button press</label>
+                <input
+                  type="number"
+                  id="lengthsPerLap"
+                  min="1"
+                  max="64"
+                  step="1"
+                  aria-describedby="lengthsPerLapHelp"
+                />
+                <span class="option-help" id="lengthsPerLapHelp">
                   How many pool lengths one press of the lap button covers. Anything beyond this
                   in a single lap is treated as a phantom turn and merged away. Set it high — or
                   to your interval length — if you don't lap once per length.
                 </span>
-              </label>
+              </div>
 
-              <label class="option">
-                <span class="option-label">Breaststroke above … strokes per length</span>
-                <input type="number" id="strokeSplit" min="1" max="500" step="1" />
-                <span class="option-help">
+              <div class="option">
+                <label class="option-label" for="strokeSplit">
+                  Breaststroke above … strokes per length
+                </label>
+                <input
+                  type="number"
+                  id="strokeSplit"
+                  min="1"
+                  max="500"
+                  step="1"
+                  aria-describedby="strokeSplitHelp"
+                />
+                <span class="option-help" id="strokeSplitHelp">
                   Depends on your stroke length <em>and</em> the pool. Roughly halve it for a
                   25 m pool.
                 </span>
-              </label>
+              </div>
 
-              <label class="option">
-                <span class="option-label">… and above … seconds per length</span>
-                <input type="number" id="durationSplit" min="1" max="900" step="1" />
-                <span class="option-help">
+              <div class="option">
+                <label class="option-label" for="durationSplit">
+                  … and above … seconds per length
+                </label>
+                <input
+                  type="number"
+                  id="durationSplit"
+                  min="1"
+                  max="900"
+                  step="1"
+                  aria-describedby="durationSplitHelp"
+                />
+                <span class="option-help" id="durationSplitHelp">
                   A cross-check on the stroke count. When the two disagree the lap is reported as
                   ambiguous and the watch's own label is kept.
                 </span>
-              </label>
+              </div>
 
-              <label class="option option-check">
-                <input type="checkbox" id="reclassifyStroke" />
-                <span class="option-label">Reclassify stroke</span>
-                <span class="option-help">
+              <div class="option option-check">
+                <input type="checkbox" id="reclassifyStroke" aria-describedby="reclassifyHelp" />
+                <label class="option-label" for="reclassifyStroke">Reclassify stroke</label>
+                <span class="option-help" id="reclassifyHelp">
                   Overrides the watch's stroke classification with the thresholds above.
                 </span>
-              </label>
+              </div>
 
-              <label class="option option-check">
-                <input type="checkbox" id="normalizeElapsed" />
-                <span class="option-label">Trim elapsed time to timer time</span>
-                <span class="option-help">
+              <div class="option option-check">
+                <input type="checkbox" id="normalizeElapsed" aria-describedby="normalizeHelp" />
+                <label class="option-label" for="normalizeElapsed">
+                  Trim elapsed time to timer time
+                </label>
+                <span class="option-help" id="normalizeHelp">
                   Drops the gap between stopping the timer and saving. Only applied when the
                   timer was never paused.
                 </span>
-              </label>
+              </div>
 
               <button class="link-button" id="resetOptions" type="button">Reset to defaults</button>
             </div>
@@ -136,7 +188,7 @@
             analysis reads and throws the rest away — durations, distances and stroke counts stay
             exact, so the file still reproduces the same problem.
           </p>
-          <ul class="removed" id="removed"></ul>
+          <ul class="removed" id="removed" aria-live="polite"></ul>
           <button class="secondary" id="anonymize" type="button">
             ⬇️ Download anonymized copy
           </button>

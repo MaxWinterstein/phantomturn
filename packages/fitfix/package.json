@@ -4,18 +4,34 @@
   "description": "Repairs length and turn detection in Garmin pool swim FIT files. No dependencies, runs in Node and in the browser.",
   "type": "module",
   "license": "MIT",
+  "author": "Max Winterstein",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MaxWinterstein/phantomturn.git",
+    "directory": "packages/fitfix"
+  },
+  "homepage": "https://github.com/MaxWinterstein/phantomturn#readme",
+  "bugs": "https://github.com/MaxWinterstein/phantomturn/issues",
+  "engines": {
+    "node": ">=22"
+  },
   "main": "src/swim-repair.js",
   "exports": {
     ".": "./src/swim-repair.js",
     "./fit-patch": "./src/fit-patch.js",
-    "./anonymize": "./src/anonymize.js"
+    "./anonymize": "./src/anonymize.js",
+    "./package.json": "./package.json"
   },
   "bin": {
     "fitfix": "src/cli.mjs"
   },
   "files": [
-    "src"
+    "src",
+    "LICENSE"
   ],
+  "scripts": {
+    "test": "node --test \"test/*.test.mjs\""
+  },
   "keywords": [
     "garmin",
     "fit-file",

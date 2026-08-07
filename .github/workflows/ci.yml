@@ -10,7 +10,12 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # Never cancel a run on main: that would leave a merged commit whose fixture
+  # privacy check never completed.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  PREK_VERSION: v0.4.12
 
 jobs:
   check:
@@ -20,7 +25,8 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: 22
+          # Single source of truth, so bumping .nvmrc cannot leave CI behind.
+          node-version-file: .nvmrc
           cache: npm
 
       - run: npm ci
@@ -31,10 +37,10 @@ jobs:
       - name: Tests
         run: node --test "packages/fitfix/test/*.test.mjs"
 
-      # Guards against personal data reaching the repository. See AGENTS.md.
-      # Driven off git ls-files, not a directory glob: a .fit committed
-      # anywhere else is exactly the case worth catching, and the watch names
-      # its files in uppercase.
+      # Guards against personal data reaching the repository. Driven off
+      # git ls-files rather than a directory glob: a .fit committed anywhere
+      # else is exactly the case worth catching, and the watch names its files
+      # in uppercase. See AGENTS.md.
       - name: Fixture privacy check
         run: |
           files=$(git ls-files '*.fit' '*.FIT' '*.Fit')
@@ -42,5 +48,22 @@ jobs:
           echo "$files"
           node tools/scrub-fixtures.mjs --check $files
 
-      - name: Site builds
+      # The site build verifies every import in dist/ resolves, which a plain
+      # copy step cannot: a missing module 404s and kills the whole page while
+      # leaving CI green.
+      - name: Site builds and its imports resolve
         run: node tools/build-web.mjs
+
+      # Everything the local hooks enforce -- YAML validity, merge markers,
+      # oversized files, whitespace. Without this, those only ever run on
+      # machines that happen to have prek installed, and a bad commit reaches
+      # main unremarked.
+      - name: Install prek
+        run: |
+          curl -fsSL --retry 3 \
+            "https://github.com/j178/prek/releases/download/${PREK_VERSION}/prek-x86_64-unknown-linux-gnu.tar.gz" \
+            | tar -xz -C /usr/local/bin --strip-components=1
+          prek --version
+
+      - name: Hooks
+        run: prek run --all-files --show-diff-on-failure

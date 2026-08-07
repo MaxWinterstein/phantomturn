@@ -13,6 +13,10 @@ dist/
 # filesystem -- which is every Linux box and every CI runner. macOS hides the
 # bug locally because core.ignorecase defaults to true there.
 *.[Ff][Ii][Tt]
+# `**` so fixtures can be organised into subdirectories later; `*` does not
+# cross a `/`, so `fixtures/forerunner265/x.fit` would otherwise be invisible
+# to git and fail in CI with a confusing ENOENT.
+!packages/fitfix/test/fixtures/**/*.[Ff][Ii][Tt]
 !packages/fitfix/test/fixtures/*.[Ff][Ii][Tt]
 
 # Your own name, watch serial and sensor ids, for the text cross-check in

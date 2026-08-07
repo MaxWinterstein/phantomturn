@@ -36,7 +36,16 @@ const LENGTH_TYPE = { idle: 0, active: 1 };
 const SWIM_STROKE = { freestyle: 0, backstroke: 1, breaststroke: 2, butterfly: 3,
                       drill: 4, mixed: 5, im: 6 };
 const EVENT_TIMER = 0;
-const STOP_TYPES = new Set([1, 4]); // stop, stop_all
+/**
+ * stop, stop_all, stop_disable, stop_disable_all.
+ *
+ * The Python reference counts only the first two. A device that ends a session
+ * with stop_disable_all would then leave a genuine mid-swim pause counted as
+ * the closing stop, so `pauses` came out 0 and the real pause was erased from
+ * total_elapsed_time. No fixture contains 8 or 9, so this is not a divergence
+ * in practice -- but the narrow set was wrong in principle.
+ */
+const STOP_TYPES = new Set([1, 4, 8, 9]);
 
 /**
  * Every assumption this layer makes, in one place. All are overridable per
@@ -226,9 +235,7 @@ export function analyze(u8, opts = {}) {
     if (!act.length) return;
     const durMs = act.reduce((a, k) => a + getField(lengths[k], F.length.elapsed), 0);
     const strokes = act.reduce((a, k) => a + (getField(lengths[k], F.length.strokes) ?? 0), 0);
-    const byStrokes = strokes >= o.strokeSplit;
-    const byTime = durMs / 1000 >= o.durationSplit;
-    const stroke = byStrokes ? 'breaststroke' : 'freestyle';
+    const stroke = strokes >= o.strokeSplit ? 'breaststroke' : 'freestyle';
     const deviceStroke = Object.keys(SWIM_STROKE).find(
       (k) => SWIM_STROKE[k] === getField(lengths[act[0]], F.length.swimStroke),
     );
@@ -251,23 +258,45 @@ export function analyze(u8, opts = {}) {
         strokes,
         note: `lap split into ${act.length} lengths`,
       });
-    if (byStrokes !== byTime)
-      findings.push({
-        type: 'ambiguous-stroke',
-        lap: li,
-        strokes,
-        durS: durMs / 1000,
-        note: 'stroke count and length duration disagree',
-      });
-    else if (o.reclassifyStroke && deviceStroke && stroke !== deviceStroke)
-      findings.push({
-        type: 'stroke-mismatch',
-        lap: li,
-        device: deviceStroke,
-        proposed: stroke,
-        strokes,
-        durS: durMs / 1000,
-      });
+
+    /*
+     * Classify per merged group, exactly as repair() does.
+     *
+     * These used to be computed on the lap total while repair() worked group
+     * by group, so with lengthsPerLap: 2 a lap of 23 + 38 strokes was reported
+     * as "breaststroke, 61 strokes" and then written as freestyle for both
+     * lengths. Reporting one thing and doing another is worse than either.
+     */
+    for (const group of mergeToTarget(act, o.lengthsPerLap, (k) =>
+      getField(lengths[k], F.length.elapsed),
+    )) {
+      const gDurMs = group.reduce((a, k) => a + getField(lengths[k], F.length.elapsed), 0);
+      const gStrokes = group.reduce((a, k) => a + (getField(lengths[k], F.length.strokes) ?? 0), 0);
+      const byStrokes = gStrokes >= o.strokeSplit;
+      const byTime = gDurMs / 1000 >= o.durationSplit;
+      const gStroke = byStrokes ? 'breaststroke' : 'freestyle';
+      const gDevice = Object.keys(SWIM_STROKE).find(
+        (k) => SWIM_STROKE[k] === getField(lengths[group[0]], F.length.swimStroke),
+      );
+
+      if (byStrokes !== byTime)
+        findings.push({
+          type: 'ambiguous-stroke',
+          lap: li,
+          strokes: gStrokes,
+          durS: gDurMs / 1000,
+          note: 'stroke count and length duration disagree',
+        });
+      else if (o.reclassifyStroke && gDevice && gStroke !== gDevice)
+        findings.push({
+          type: 'stroke-mismatch',
+          lap: li,
+          device: gDevice,
+          proposed: gStroke,
+          strokes: gStrokes,
+          durS: gDurMs / 1000,
+        });
+    }
   });
 
   /*
@@ -457,7 +486,13 @@ export function repair(u8, opts = {}) {
     [F.session.strokeDistance]: ratio(distCm, strokes),
     [F.session.avgCadence]: ratio(strokes * 60, activeMs / 1000),
   };
-  if (o.normalizeElapsed && pauses <= 0) sessPatch[F.session.elapsed] = timerMs;
+  // Same condition analyze() reports on. It used to write whenever the timer
+  // was never paused, while analyze() only reported when there was actually
+  // something to trim -- a no-op for Garmin files, where elapsed >= timer
+  // always, but two conditions for one decision invites them to drift apart.
+  if (o.normalizeElapsed && pauses <= 0 && info.elapsedMs > timerMs) {
+    sessPatch[F.session.elapsed] = timerMs;
+  }
 
   // --- write
   let li = 0,

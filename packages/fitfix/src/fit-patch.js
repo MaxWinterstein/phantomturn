@@ -12,30 +12,38 @@
  */
 
 // ---------------------------------------------------------------- base types
-// [name, size, invalid value, signed?]
+//
+// Keyed by the base type NUMBER -- the low five bits of the base type byte --
+// not by the canonical byte. The byte also carries an endian flag in bit 7 and
+// two reserved bits, so a table keyed by 0x84 only matches an encoder that
+// writes exactly 0x84. Keying by 0x84 & 0x1f == 4 handles every variant of
+// uint16; the previous form fell through to `byte` for 77 of the 256 possible
+// bytes, silently reading a uint16 array one byte at a time.
+//
+// [name, element size, invalid value, signed?]
 // biome-ignore format: the columns are aligned on purpose, this is a table
 const BASE_TYPES = {
-  0x00: ['enum',    1, 0xff,       false],
-  0x01: ['sint8',   1, 0x7f,       true ],
-  0x02: ['uint8',   1, 0xff,       false],
-  0x83: ['sint16',  2, 0x7fff,     true ],
-  0x84: ['uint16',  2, 0xffff,     false],
-  0x85: ['sint32',  4, 0x7fffffff, true ],
-  0x86: ['uint32',  4, 0xffffffff, false],
-  0x07: ['string',  1, 0x00,       false],
-  0x88: ['float32', 4, 0xffffffff, false],
-  0x89: ['float64', 8, null,       false],
-  0x0a: ['uint8z',  1, 0x00,       false],
-  0x8b: ['uint16z', 2, 0x0000,     false],
-  0x8c: ['uint32z', 4, 0x00000000, false],
-  0x0d: ['byte',    1, 0xff,       false],
-  0x8e: ['sint64',  8, null,       true ],
-  0x8f: ['uint64',  8, null,       false],
-  0x90: ['uint64z', 8, null,       false],
+   0: ['enum',    1, 0xff,       false],
+   1: ['sint8',   1, 0x7f,       true ],
+   2: ['uint8',   1, 0xff,       false],
+   3: ['sint16',  2, 0x7fff,     true ],
+   4: ['uint16',  2, 0xffff,     false],
+   5: ['sint32',  4, 0x7fffffff, true ],
+   6: ['uint32',  4, 0xffffffff, false],
+   7: ['string',  1, 0x00,       false],
+   8: ['float32', 4, 0xffffffff, false],
+   9: ['float64', 8, null,       false],
+  10: ['uint8z',  1, 0x00,       false],
+  11: ['uint16z', 2, 0x0000,     false],
+  12: ['uint32z', 4, 0x00000000, false],
+  13: ['byte',    1, 0xff,       false],
+  14: ['sint64',  8, null,       true ],
+  15: ['uint64',  8, null,       false],
+  16: ['uint64z', 8, null,       false],
 };
 
 /** Descriptor for a base type: [name, elementSize, invalidValue, signed]. */
-export const baseInfo = (b) => BASE_TYPES[b] ?? BASE_TYPES[b & 0x1f] ?? BASE_TYPES[0x0d];
+export const baseInfo = (b) => BASE_TYPES[b & 0x1f] ?? BASE_TYPES[13];
 
 // ------------------------------------------------------------------ CRC-16
 // biome-ignore format: 8 entries per row mirrors the nibble lookup it encodes
@@ -225,7 +233,13 @@ export function hasField(frame, num) {
 
 /**
  * Sets raw values. `values` is {fieldNumber: value | value[] | null}.
- * null writes the base type's invalid value.
+ *
+ * A scalar `null` invalidates the WHOLE field, including every element of an
+ * array. Invalidating only element 0 left an array field looking valid but
+ * altered, and callers were already working around it by passing an array of
+ * nulls. Pass an array to set elements individually; `undefined` in an array
+ * leaves that element alone.
+ *
  * Returns a new Uint8Array; the original is left untouched.
  */
 export function patchFrame(frame, values) {
@@ -237,7 +251,12 @@ export function patchFrame(frame, values) {
     if (!f) throw new Error(`field ${numStr} missing in message ${frame.globalNum}`);
     const [name, sz, invalid, signed] = baseInfo(f.base);
     const n = Math.floor(f.size / sz);
-    const arr = Array.isArray(val) ? val.slice(0, n) : [val];
+    // A bare null means "this field is not present", which for an array means
+    // every element, not just the first.
+    const arr = Array.isArray(val)
+      ? val.slice(0, n)
+      : new Array(n).fill(val === null ? null : undefined);
+    if (!Array.isArray(val) && val !== null) arr[0] = val;
     while (arr.length < n) arr.push(undefined);
     for (let i = 0; i < n; i++) {
       const raw = arr[i];

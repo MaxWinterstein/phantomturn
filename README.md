@@ -98,13 +98,15 @@ unchanged, get identical bytes.
 
 ## Layout
 
-| Path                          | What                                            |
-| ----------------------------- | ----------------------------------------------- |
-| `packages/fitfix/fit-patch.js`  | Generic FIT parser, patcher and CRC. No opinions. |
-| `packages/fitfix/swim-repair.js` | Phantom turns, stroke, elapsed time. Calibrated. |
-| `packages/fitfix/anonymize.js`  | Strips name, biometrics, serials and dates.       |
-| `web/`                        | The static site. No build step, no bundler.       |
-| `tools/`                      | Scrub, build and serve. All dependency-free.      |
+| Path                                 | What                                              |
+| ------------------------------------ | ------------------------------------------------- |
+| `packages/fitfix/src/fit-patch.js`   | Generic FIT parser, patcher and CRC. No opinions.   |
+| `packages/fitfix/src/swim-repair.js` | Phantom turns, stroke, elapsed time. Calibrated.    |
+| `packages/fitfix/src/anonymize.js`   | Keeps what a swim needs, drops everything else.     |
+| `packages/fitfix/src/cli.mjs`        | The command line entry point.                       |
+| `web/`                               | The static site. No build step, no bundler.         |
+| `tools/`                             | Anonymize, build and serve. All dependency-free.    |
+| `reference/`                         | The Python implementation the golden files came from. |
 
 `fitfix` is a local module rather than a published package for now, but it is
 kept self-contained so it can move out to its own repository later.

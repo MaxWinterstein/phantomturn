@@ -4,8 +4,11 @@
   --surface-2: #f1f5f9;
   --text: #0f172a;
   --muted: #64748b;
-  --border: #e2e8f0;
-  --accent: #0284c7;
+  --border: #cbd5e1;
+  /* 4.10:1 on white was the root cause of ten AA failures at once -- the CTA,
+     every link, the privacy pill and the options badge all derive from it.
+     #0369a1 is 5.74:1 and fixes them together. */
+  --accent: #0369a1;
   --accent-soft: #e0f2fe;
   --warn: #b45309;
   --warn-soft: #fef3c7;
@@ -21,8 +24,8 @@
     --surface: #121b2c;
     --surface-2: #18243a;
     --text: #e6edf7;
-    --muted: #8da2bd;
-    --border: #22304a;
+    --muted: #9db2cc;
+    --border: #2c3c5a;
     --accent: #38bdf8;
     --accent-soft: #0c2c42;
     --warn: #fbbf24;
@@ -45,6 +48,34 @@
 [hidden] {
   /* biome-ignore lint/complexity/noImportantStyles: must beat every author display rule */
   display: none !important;
+}
+
+/*
+ * Off-screen but still focusable and still in the tab order -- unlike
+ * `hidden`, which removes an element from keyboard reach entirely.
+ */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* No :focus-visible rules existed at all; every borderless button relied on
+   the UA ring, which several backgrounds here wash out. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.dropzone:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 body {
@@ -134,7 +165,9 @@ h1 {
   align-items: center;
   gap: 0.3rem;
   padding: 3rem 1.5rem;
-  border: 2px dashed var(--border);
+  /* The app's primary control needs a boundary you can actually see:
+     WCAG 1.4.11 wants 3:1, and against --border it was 1.17:1. */
+  border: 2px dashed var(--muted);
   border-radius: var(--radius);
   background: var(--surface);
   cursor: pointer;
@@ -151,10 +184,34 @@ h1 {
   background: var(--surface-2);
 }
 
-.dropzone.dragging {
+/* Drag state now lives on <body>: the dropzone hides once a file is loaded,
+   so a zone-scoped listener meant a second drop did nothing at all. */
+body.dragging .dropzone {
   border-color: var(--accent);
   background: var(--accent-soft);
   transform: scale(1.01);
+}
+
+body.dragging::after {
+  content: "🌊 Drop to load";
+  position: fixed;
+  inset: auto 0 1.5rem;
+  margin: 0 auto;
+  width: max-content;
+  padding: 0.5rem 1rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--surface);
+  font-size: 0.9rem;
+  font-weight: 600;
+  box-shadow: var(--shadow);
+}
+
+.busy {
+  margin: 0.9rem 0 0;
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--muted);
 }
 
 .dropzone-icon {
@@ -502,9 +559,21 @@ h1 {
   font-size: 0.85rem;
 }
 
+.removed li {
+  padding-left: 1.6rem;
+  text-indent: -1.6rem;
+}
+
 .removed li::before {
-  content: "✂️";
+  /* The empty alt suppresses the "scissors" a screen reader would otherwise
+     announce before every item; generated content cannot take aria-hidden. */
+  content: "✂️" / "";
   margin-right: 0.5rem;
+}
+
+.removed-none {
+  color: var(--muted);
+  font-style: italic;
 }
 
 .secondary {
@@ -598,7 +667,10 @@ footer a {
 .signature a {
   color: var(--accent);
   font-weight: 600;
-  text-decoration: none;
+  /* Underlined, not colour-only: against the surrounding text the accent is
+     1.82:1 in dark mode, which fails WCAG 1.4.1 on its own. */
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
 }
 
 .signature a:hover {
@@ -635,7 +707,8 @@ footer a {
   margin: 0.15rem 0 0;
   font-size: 0.8rem;
   font-style: italic;
-  opacity: 0.75;
+  /* No opacity: --muted is already at the 4.5:1 line, and dimming it further
+     dropped this to 2.88:1. */
 }
 
 .footer-links {

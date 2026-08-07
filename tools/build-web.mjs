@@ -7,7 +7,8 @@
  * script only arranges the files so that `./lib/swim-repair.js` resolves both
  * locally and on GitHub Pages.
  */
-import { cp, mkdir, readdir, rm, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { cp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
 const root = new URL('../', import.meta.url);
@@ -37,6 +38,32 @@ await cp(new URL(SAMPLE, root), new URL('sample/pool-swim.fit', dist));
 // and directories whose names begin with an underscore.
 await writeFile(new URL('.nojekyll', dist), '');
 
+/*
+ * Prove the module graph actually resolves.
+ *
+ * LIB is hand-maintained, so adding a module under packages/fitfix/src/ and
+ * forgetting it here leaves unit tests, lint and this copy step all green
+ * while the deployed page 404s an import -- which kills every script on it.
+ * The page then renders perfectly and does nothing at all.
+ */
 const files = await readdir(dist, { recursive: true });
+const scripts = files.filter((f) => f.endsWith('.js'));
+const missing = [];
+
+for (const script of scripts) {
+  const source = await readFile(new URL(script, dist), 'utf8');
+  for (const [, spec] of source.matchAll(/^\s*import\s[^'"]*['"](\.[^'"]+)['"]/gm)) {
+    const target = fileURLToPath(new URL(spec, new URL(script, dist)));
+    if (!existsSync(target)) missing.push(`${script} -> ${spec}`);
+  }
+}
+
+if (missing.length) {
+  console.error('unresolved imports in the built site:');
+  for (const m of missing) console.error(`  ${m}`);
+  process.exit(1);
+}
+
 console.log(`built ${fileURLToPath(dist)}`);
 for (const f of files.sort()) console.log(`  ${f}`);
+console.log(`  (${scripts.length} scripts, all imports resolve)`);
