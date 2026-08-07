@@ -116,15 +116,15 @@ codebase agreeing with itself.
 
 It is private today, and a few things are deliberately parked until it is not:
 
-1. **Fill in the postal address in `web/impressum.html`.** § 5 DDG normally
-   requires one and it is left blank rather than invented. Whether a purely
-   private, non-commercial page needs an Impressum at all is a judgement call —
-   worth ten minutes of reading before publishing.
-2. **Turn on the Pages deploy.** Uncomment the `workflow_run` trigger in
+1. **Turn on the Pages deploy.** Uncomment the `workflow_run` trigger in
    `.github/workflows/pages.yml` and set Settings → Pages → Source to
    "GitHub Actions". Pages needs a public repo on free plans.
-3. **Check `tools/needles.local.json` is still untracked.** It holds a name, a
+2. **Check `tools/needles.local.json` is still untracked.** It holds a name, a
    watch serial and sensor ids.
+
+`web/legal.html` carries a name and an email and no postal address — a
+deliberate call for a private, non-commercial page that collects nothing. If
+the project ever takes money or ships advertising, that changes.
 
 ## Layout
 
