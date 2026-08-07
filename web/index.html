@@ -6,14 +6,19 @@
     <meta name="color-scheme" content="light dark" />
     <!--
       GitHub Pages cannot set response headers, so the policy has to live here.
-      connect-src 'none' is the load-bearing one: it makes "the file never
+      connect-src 'self' is the load-bearing one: it makes "the file never
       leaves this page" something the browser enforces rather than something
-      the page merely claims. The sample file is read through fetch(), so
-      'self' is needed for that and nothing else.
+      the page merely claims. 'self' rather than 'none' because the sample file
+      is read with fetch().
+
+      No frame-ancestors: it is only honoured as a real header and the browser
+      warns about it in a meta tag. There is nothing to clickjack here -- no
+      login, no state, no destructive action -- so a JS frame-buster would be
+      noise rather than defence.
     -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'"
     />
     <title>phantomturn — fix Garmin pool swim files</title>
     <meta
@@ -208,6 +213,8 @@
         <p class="signature-aside">Lap count not guaranteed.</p>
         <p class="footer-links">
           <a href="https://github.com/MaxWinterstein/phantomturn">Source on GitHub</a>
+          <span class="dot">·</span>
+          <a href="./impressum.html">Impressum</a>
           <span class="dot">·</span>
           <span>MIT</span>
           <span class="dot">·</span>

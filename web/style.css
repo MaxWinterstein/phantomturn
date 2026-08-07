@@ -642,6 +642,43 @@ body.dragging::after {
   transform: translateY(1px);
 }
 
+/* ---------------------------------------------------------------- legal */
+.legal {
+  max-width: 40rem;
+}
+
+.legal h1 {
+  font-size: 1.75rem;
+  margin-bottom: 0.25rem;
+}
+
+.legal h2 {
+  margin: 1.75rem 0 0.4rem;
+  font-size: 1rem;
+  font-weight: 650;
+}
+
+.legal p {
+  margin: 0;
+  font-size: 0.925rem;
+  color: var(--muted);
+}
+
+.legal-note {
+  font-size: 0.825rem;
+}
+
+.legal a {
+  color: var(--accent);
+}
+
+.legal-back {
+  margin-top: 2.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.9rem;
+}
+
 /* ----------------------------------------------------------------- misc */
 .error {
   margin: 1.25rem 0 0;

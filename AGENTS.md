@@ -112,6 +112,20 @@ The committed fixtures were regenerated from the raw exports with the
 keep-list anonymizer, so the goldens are still Python's output — not this
 codebase agreeing with itself.
 
+## Before this repository goes public
+
+It is private today, and a few things are deliberately parked until it is not:
+
+1. **Fill in the postal address in `web/impressum.html`.** § 5 DDG normally
+   requires one and it is left blank rather than invented. Whether a purely
+   private, non-commercial page needs an Impressum at all is a judgement call —
+   worth ten minutes of reading before publishing.
+2. **Turn on the Pages deploy.** Uncomment the `workflow_run` trigger in
+   `.github/workflows/pages.yml` and set Settings → Pages → Source to
+   "GitHub Actions". Pages needs a public repo on free plans.
+3. **Check `tools/needles.local.json` is still untracked.** It holds a name, a
+   watch serial and sensor ids.
+
 ## Layout
 
 ```
