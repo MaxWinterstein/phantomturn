@@ -107,17 +107,16 @@
               <div class="option">
                 <label class="option-label" for="lengthsPerLap">Lengths per lap button press</label>
                 <input
-                  type="number"
+                  type="text"
+                  inputmode="numeric"
                   id="lengthsPerLap"
-                  min="1"
-                  max="64"
-                  step="1"
                   aria-describedby="lengthsPerLapHelp"
                 />
                 <span class="option-help" id="lengthsPerLapHelp">
-                  How many pool lengths one press of the lap button covers. Anything beyond this
-                  in a single lap is treated as a phantom turn and merged away. Set it high — or
-                  to your interval length — if you don't lap once per length.
+                  <strong>auto</strong> works it out separately for each lap by measuring it
+                  against how long one length takes you in this swim — so a session where you
+                  lapped every length at first and then swam a continuous block comes out right
+                  in both halves. Put a number here instead to force it.
                 </span>
               </div>
 

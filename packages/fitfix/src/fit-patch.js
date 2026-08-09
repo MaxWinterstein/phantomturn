@@ -163,7 +163,13 @@ export function readFit(u8) {
       const def = { globalNum, littleEndian, fields, size: offset - 1 };
       localDefs[local] = def;
       p = q;
-      frames.push({ kind: 'def', bytes: u8.subarray(start, p), localType: local, globalNum, def });
+      frames.push({
+        kind: 'def',
+        bytes: u8.subarray(start, p),
+        localType: local,
+        globalNum,
+        def,
+      });
     } else {
       const def = localDefs[local];
       if (!def) throw new Error(`data without a definition (local ${local})`);

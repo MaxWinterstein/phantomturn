@@ -354,6 +354,16 @@ body.dragging::after {
   color: var(--warn);
 }
 
+/* auto is not a warning -- it is the tool telling you what it worked out. */
+.assumption-auto {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface));
+}
+
+.assumption-auto strong {
+  color: var(--accent);
+}
+
 /* --------------------------------------------------------------- options */
 .options {
   border: 1px solid var(--border);
@@ -428,7 +438,8 @@ body.dragging::after {
   color: var(--muted);
 }
 
-.option input[type="number"] {
+.option input[type="number"],
+.option input[type="text"] {
   width: 6.5rem;
   padding: 0.4rem 0.6rem;
   border: 1px solid var(--border);
@@ -699,9 +710,10 @@ footer {
   color: var(--muted);
 }
 
-/* Kept above the class rules below: a lower-specificity selector placed after
- * a higher-specificity one is what noDescendingSpecificity complains about. */
-footer a {
+/* Class-scoped rather than `footer a`: an element selector here would sit at
+ * lower specificity than the `.share-where a` and `.legal a` rules defined
+ * earlier in the file, which is what noDescendingSpecificity objects to. */
+.footer-links a {
   color: var(--muted);
 }
 

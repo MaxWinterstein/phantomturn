@@ -171,11 +171,18 @@ for screenshots and for checking a deploy.
 
 ## Known traps
 
-- **`lengthsPerLap` is honoured by `repair()`, but only downwards.** A lap with
-  more lengths than the target is merged down via `mergeToTarget()`, which
-  picks the most even grouping. A lap with *fewer* is left
-  alone — nothing is ever split. It used to be reporting-only while `repair()`
-  always merged to one regardless; do not let it regress to that.
+- **`lengthsPerLap` defaults to `'auto'` and is resolved per lap.**
+  `resolveLapTargets()` produces one target per lap; `analyze()` returns them
+  as `lapTargets` and `repair()` uses those rather than recomputing. A fixed
+  number still overrides. Merging is downwards only — a lap with fewer lengths
+  than its target is untouched and nothing is ever split, so a *missed* turn is
+  out of reach either way.
+- **The unit estimate is `max()` of two estimators on purpose.** Both fail
+  small, in opposite directions: the recorded-length estimator is useless when
+  every length was split (swim-01 has no intact length anywhere), and the
+  lap-total estimator is dragged down by long continuous blocks. Do not
+  "simplify" it to one of them — `auto-lengths.test.mjs` pins the swimmer's
+  confirmed count for each fixture.
 - **The `lap-structure` finding is the guard against a wrong target.** It fires when more
   than half the laps hold multiple lengths, or any lap holds four or more —
   which means the swimmer did not lap once per length and the merge will delete

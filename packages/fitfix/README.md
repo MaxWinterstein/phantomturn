@@ -64,25 +64,51 @@ this is a report, not a refusal.
 
 | Option             | Default | Meaning                                             |
 | ------------------ | ------- | --------------------------------------------------- |
-| `lengthsPerLap`    | `1`     | Pool lengths one lap button press covers             |
+| `lengthsPerLap`    | `'auto'`| Pool lengths one lap button press covers, or `'auto'` to infer it per lap |
 | `strokeSplit`      | `40`    | Strokes per length at or above which breaststroke is assumed |
 | `durationSplit`    | `100`   | Seconds per length, used only as a cross-check       |
 | `reclassifyStroke` | `true`  | Overwrite the watch's stroke classification          |
 | `normalizeElapsed` | `true`  | Set elapsed time to timer time when never paused     |
 
-`lengthsPerLap` only ever merges *downwards*. A lap holding more lengths than
-the target is collapsed by `mergeToTarget()`, which picks the most even
-grouping — it minimises the sum of the squared group durations, and for a fixed
-total that is smallest when the groups are equal. Real lengths in one lap take
-roughly the same time, and a phantom turn splits one into two short halves, so
-the most balanced partition is the one that puts the halves back together. A
-lap holding fewer lengths than the target is left untouched; nothing is ever
-split apart.
+### `lengthsPerLap: 'auto'`
+
+The default. Each lap is measured against how long one length takes *in this
+swim*, so a session lapped inconsistently still comes out right:
+
+```
+lap  0-15  one recorded length each   ->  1 each
+lap  16    eleven recorded lengths    ->  9
+lap  18    seven recorded lengths     ->  4
+```
+
+The unit is the larger of two estimates, because they fail in opposite
+directions and both fail *small*:
+
+- **the median of the longer half of the recorded lengths.** A phantom-turn
+  fragment is always shorter than the length it came from, so throwing away the
+  short half throws away the fragments. Useless when *every* length was split —
+  there is then no intact length in the file to learn from.
+- **the median lap total.** Right whenever the swimmer lapped once per length,
+  including that all-split case. Reads low when some laps hold a long
+  continuous block.
+
+Taking the larger also absorbs mixed strokes: a ~140 s breaststroke length
+against a 96–132 s unit still rounds to one.
+
+A number forces it instead. Either way it only ever merges *downwards* — a lap
+holding fewer lengths than the target is untouched, and nothing is ever split
+apart, so a *missed* turn is beyond this either way.
 
 ```js
-repair(bytes);                        // 200 m over 4 lengths
+repair(bytes);                        // 200 m over 4 lengths, inferred
 repair(bytes, { lengthsPerLap: 8 });  // 450 m over 9 -- nothing merged
 ```
+
+The grouping within a lap comes from `mergeToTarget()`, which picks the most
+even partition — it minimises the sum of the squared group durations, smallest
+when the groups are equal. Real lengths in one lap take roughly the same time,
+and a phantom turn splits one into two short halves, so the balanced partition
+is the one that puts the halves back together.
 
 ## Known limits
 

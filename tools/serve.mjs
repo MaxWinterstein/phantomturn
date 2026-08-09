@@ -47,7 +47,9 @@ createServer(async (req, res) => {
     if (real !== ROOT && !real.startsWith(ROOT + sep)) throw new Error('outside root');
 
     const body = await readFile(real);
-    res.writeHead(200, { 'content-type': TYPES[extname(path)] ?? 'application/octet-stream' });
+    res.writeHead(200, {
+      'content-type': TYPES[extname(path)] ?? 'application/octet-stream',
+    });
     res.end(body);
   } catch {
     res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });

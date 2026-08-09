@@ -135,13 +135,13 @@ scrubbing step that is not optional.
 
 ## Known limits
 
-- Defaults to **one lap button press per pool length**. If you lap per interval
-  — or not at all, letting auto-pause and rest detection do the work — the
-  default merges real lengths and loses distance. Raise `lengthsPerLap` (or the
-  "Lengths per lap button press" setting) to match how you actually swim. Both
-  front ends state the assumption on every result and raise a `lap-structure`
-  warning when the file does not look like the configured habit, but the tool
-  cannot decide for you: check the before/after numbers.
+- **Lengths per lap is inferred from the file**, per lap, by measuring each lap
+  against how long one length takes you in that swim. That handles a session
+  you lapped inconsistently, which no single number can. It is still a
+  heuristic tuned on four files — check the before/after numbers, and put a
+  number in if you disagree.
+- **It only ever merges, never splits.** If the watch *missed* a turn and
+  recorded two lengths as one, nothing here will recover it.
 - The freestyle/breaststroke split is **40 strokes per length**, calibrated in a
   50 m pool. A 25 m pool would need roughly half that. It should be derived from
   the session instead of hard-coded.

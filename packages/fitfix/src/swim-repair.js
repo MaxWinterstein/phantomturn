@@ -5,16 +5,24 @@
  * generic and uncontroversial, the heuristics here are not.
  *
  * WARNING -- the defaults are calibrated on a single swimmer:
- *   * lengthsPerLap: 1  -- assumes the lap button was pressed once per 50 m
- *     length. Anyone who laps per interval (4x100) silently loses distance.
- *     That is why analyze() returns proposals instead of applying them -- the
- *     decision belongs in the UI.
+ *   * lengthsPerLap: 'auto' -- each lap is measured against the session's own
+ *     length unit. A fixed number assumes one lapping habit for the whole
+ *     swim, which silently deletes distance from anyone who lapped per length
+ *     at first and then swam a continuous block. analyze() still returns
+ *     proposals rather than applying them; the decision belongs in the UI.
  *   * strokeSplit: strokes per length above which breaststroke is assumed
  *     instead of freestyle. Depends on stroke length AND pool length.
  */
 import { getField, patchFrame, readFit, writeFit } from './fit-patch.js';
 
-const MSG = { record: 20, session: 18, lap: 19, length: 101, activity: 34, event: 21 };
+const MSG = {
+  record: 20,
+  session: 18,
+  lap: 19,
+  length: 101,
+  activity: 34,
+  event: 21,
+};
 
 // field numbers from the FIT profile (only the ones actually used)
 // biome-ignore format: grouped by message, one line per logical group
@@ -52,9 +60,13 @@ const STOP_TYPES = new Set([1, 4, 8, 9]);
  * call; the values are what one swimmer's Forerunner 265 needed in a 50 m pool.
  */
 export const DEFAULTS = {
-  /** Lengths one press of the lap button covers. Anything beyond this in a lap
-   *  is treated as phantom turns and merged away. */
-  lengthsPerLap: 1,
+  /**
+   * Lengths one press of the lap button covers, or `'auto'` to work it out per
+   * lap from the file itself. A fixed number assumes you lapped the same way
+   * for the whole swim; `'auto'` does not, which matters if you pressed the
+   * button for the first few lengths and then swam a continuous block.
+   */
+  lengthsPerLap: 'auto',
   /** Strokes per length at or above which breaststroke is assumed. Depends on
    *  stroke length *and* pool length -- halve it for a 25 m pool. */
   strokeSplit: 40,
@@ -153,6 +165,72 @@ export function mergeToTarget(indices, target, durationOf) {
   return groups;
 }
 
+const median = (xs) => {
+  const s = [...xs].sort((a, b) => a - b);
+  if (!s.length) return 0;
+  return s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2;
+};
+
+/**
+ * How long one real pool length takes this swimmer, in seconds.
+ *
+ * Two estimators, and the larger wins. They fail in opposite directions, which
+ * is the whole reason for taking a maximum:
+ *
+ *   - The median of the LONGER half of the recorded lengths. Phantom turns
+ *     produce fragments, and a fragment is always shorter than the length it
+ *     came from, so discarding the short half discards them. Useless on a file
+ *     where every single length was split -- there is then no intact length
+ *     anywhere to learn from, and this reads far too low.
+ *
+ *   - The median lap total. Right whenever the swimmer lapped once per length,
+ *     including the all-split case above. Reads too low when some laps hold a
+ *     long continuous block, because those laps drag the distribution.
+ *
+ * Both err small, never large, so max() is right rather than merely convenient.
+ * Taking the larger also absorbs a mixed-stroke session for free: breaststroke
+ * lengths run about 140 s against a 96-132 s unit, which still rounds to one.
+ */
+function estimateLengthUnit(lapGroups, durationOf) {
+  const all = lapGroups.flat();
+  if (!all.length) return 0;
+
+  const durations = all.map(durationOf).sort((a, b) => a - b);
+  const longerHalf = median(durations.slice(Math.floor(durations.length / 2)));
+  const lapTotals = median(
+    lapGroups.filter((g) => g.length).map((g) => g.reduce((a, k) => a + durationOf(k), 0)),
+  );
+  return Math.max(longerHalf, lapTotals);
+}
+
+/**
+ * How many real lengths each lap holds.
+ *
+ * With a numeric `lengthsPerLap` every lap gets the same answer. With 'auto'
+ * each lap is measured against the session's own length unit, so a swim that
+ * was lapped per length at the start and then swum as one continuous block
+ * comes out right in both halves -- which a single number cannot do.
+ *
+ * Never exceeds the number of lengths actually recorded: this merges, it never
+ * splits, so a missed turn is beyond it either way.
+ */
+function resolveLapTargets(lapGroups, durationOf, lengthsPerLap) {
+  if (lengthsPerLap !== 'auto') {
+    const n = Number.isFinite(lengthsPerLap) ? Math.max(1, Math.floor(lengthsPerLap)) : 1;
+    return { targets: lapGroups.map(() => n), unit: null };
+  }
+
+  const unit = estimateLengthUnit(lapGroups, durationOf);
+  if (!unit) return { targets: lapGroups.map(() => 1), unit: null };
+
+  const targets = lapGroups.map((group) => {
+    if (!group.length) return 1;
+    const total = group.reduce((a, k) => a + durationOf(k), 0);
+    return Math.min(group.length, Math.max(1, Math.round(total / unit)));
+  });
+  return { targets, unit };
+}
+
 /**
  * Reads the file and describes what stands out -- without changing anything.
  * This is the function a UI hangs off.
@@ -228,10 +306,16 @@ export function analyze(u8, opts = {}) {
     );
   }
 
+  const durationOf = (k) => getField(lengths[k], F.length.elapsed) / 1000;
+  const lapActive = lapLengths.map((ids) =>
+    ids.filter((k) => getField(lengths[k], F.length.lengthType) === LENGTH_TYPE.active),
+  );
+  const { targets: lapTargets, unit } = resolveLapTargets(lapActive, durationOf, o.lengthsPerLap);
+
   const findings = [];
   const swimLaps = [];
-  lapLengths.forEach((ids, li) => {
-    const act = ids.filter((k) => getField(lengths[k], F.length.lengthType) === LENGTH_TYPE.active);
+  lapActive.forEach((act, li) => {
+    const target = lapTargets[li];
     if (!act.length) return;
     const durMs = act.reduce((a, k) => a + getField(lengths[k], F.length.elapsed), 0);
     const strokes = act.reduce((a, k) => a + (getField(lengths[k], F.length.strokes) ?? 0), 0);
@@ -248,12 +332,12 @@ export function analyze(u8, opts = {}) {
       deviceStroke,
     });
 
-    if (act.length > o.lengthsPerLap)
+    if (act.length > target)
       findings.push({
         type: 'phantom-turn',
         lap: li,
         detected: act.length,
-        assumed: o.lengthsPerLap,
+        assumed: target,
         durS: durMs / 1000,
         strokes,
         note: `lap split into ${act.length} lengths`,
@@ -267,9 +351,7 @@ export function analyze(u8, opts = {}) {
      * as "breaststroke, 61 strokes" and then written as freestyle for both
      * lengths. Reporting one thing and doing another is worse than either.
      */
-    for (const group of mergeToTarget(act, o.lengthsPerLap, (k) =>
-      getField(lengths[k], F.length.elapsed),
-    )) {
+    for (const group of mergeToTarget(act, target, (k) => getField(lengths[k], F.length.elapsed))) {
       const gDurMs = group.reduce((a, k) => a + getField(lengths[k], F.length.elapsed), 0);
       const gStrokes = group.reduce((a, k) => a + (getField(lengths[k], F.length.strokes) ?? 0), 0);
       const byStrokes = gStrokes >= o.strokeSplit;
@@ -315,34 +397,43 @@ export function analyze(u8, opts = {}) {
    */
   if (swimLaps.length) {
     const lengthsBefore = swimLaps.reduce((a, l) => a + l.lengths, 0);
-    const split = swimLaps.filter((l) => l.lengths > o.lengthsPerLap);
+    const lengthsAfter = swimLaps.reduce((a, l) => a + Math.min(l.lengths, lapTargets[l.lap]), 0);
+    const split = swimLaps.filter((l) => l.lengths > lapTargets[l.lap]);
     const maxPerLap = Math.max(...swimLaps.map((l) => l.lengths));
+    const worstOverrun = Math.max(...swimLaps.map((l) => l.lengths / lapTargets[l.lap]));
 
-    // Both tests are relative to the configured target. An absolute
-    // `maxPerLap >= 4` fired on files where nothing would be merged at all --
-    // with lengthsPerLap: 20, a lap of 10 lengths raised a red "22 lengths
-    // would become 22" warning.
-    const wayOver = maxPerLap >= 4 * o.lengthsPerLap;
-    if (split.length && (split.length / swimLaps.length > 0.5 || wayOver)) {
+    /*
+     * Only a fixed target can be wrong about the swimmer's habit; 'auto'
+     * measures each lap against the session's own length unit, so a lap
+     * holding eleven lengths is a finding about that lap rather than evidence
+     * the setting is wrong. Both tests are relative to the target -- an
+     * absolute `maxPerLap >= 4` used to fire on files where nothing would be
+     * merged at all.
+     */
+    const fixed = o.lengthsPerLap !== 'auto';
+    if (fixed && split.length && (split.length / swimLaps.length > 0.5 || worstOverrun >= 4)) {
+      const n = lapTargets[0];
+      const word = (x) => (x === 1 ? 'length' : 'lengths');
       findings.push({
         type: 'lap-structure',
         laps: swimLaps.length,
         lengthsBefore,
-        lengthsAfter: swimLaps.reduce((a, l) => a + Math.min(l.lengths, o.lengthsPerLap), 0),
+        lengthsAfter,
         maxPerLap,
         note:
-          `${split.length} of ${swimLaps.length} laps hold more than ` +
-          `${o.lengthsPerLap} ${o.lengthsPerLap === 1 ? 'length' : 'lengths'}. ` +
-          `If a lap button press does not really cover ${o.lengthsPerLap} ` +
-          `${o.lengthsPerLap === 1 ? 'length' : 'lengths'} for you, merging will delete ` +
-          'real distance.',
+          `${split.length} of ${swimLaps.length} laps hold more than ${n} ${word(n)}. ` +
+          `If a lap button press does not really cover ${n} ${word(n)} for you, merging ` +
+          'will delete real distance — try lengths per lap set to auto.',
       });
     }
   }
 
   const elapsedMs = getField(session, F.session.elapsed);
   if (o.normalizeElapsed && pauses <= 0 && elapsedMs > timerMs)
-    findings.push({ type: 'inflated-elapsed', extraS: (elapsedMs - timerMs) / 1000 });
+    findings.push({
+      type: 'inflated-elapsed',
+      extraS: (elapsedMs - timerMs) / 1000,
+    });
 
   return {
     poolM,
@@ -357,6 +448,9 @@ export function analyze(u8, opts = {}) {
     // assignment drifting apart is exactly how analyze() ended up classifying
     // stroke on the lap total while repair() worked group by group.
     lapLengths,
+    lapTargets,
+    /** Seconds one real length takes, when it was inferred rather than given. */
+    lengthUnitS: unit,
   };
 }
 
@@ -378,10 +472,10 @@ export function repair(u8, opts = {}) {
   const newInfo = []; // { durMs, active, strokes }
   const lapNewLens = [];
 
-  lapLengths.forEach((ids) => {
+  lapLengths.forEach((ids, li) => {
     const mine = [];
     const act = ids.filter((k) => getField(lengths[k], F.length.lengthType) === LENGTH_TYPE.active);
-    const groups = mergeToTarget(act, o.lengthsPerLap, (k) =>
+    const groups = mergeToTarget(act, info.lapTargets[li], (k) =>
       getField(lengths[k], F.length.elapsed),
     );
     // Each group collapses into its first length; the rest are not emitted.
@@ -392,7 +486,11 @@ export function repair(u8, opts = {}) {
       if (!isActive) {
         const idx = newInfo.length;
         newSpecs.set(k, { [F.length.messageIndex]: idx });
-        newInfo.push({ durMs: getField(lengths[k], F.length.elapsed), active: false, strokes: 0 });
+        newInfo.push({
+          durMs: getField(lengths[k], F.length.elapsed),
+          active: false,
+          strokes: 0,
+        });
         mine.push(idx);
       } else if (byFirst.has(k)) {
         const group = byFirst.get(k);

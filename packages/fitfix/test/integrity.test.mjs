@@ -96,13 +96,16 @@ test('a swim with no strokes recorded leaves derived fields invalid, not zero', 
   assert.ok(Number.isFinite(getField(session, 124)), 'avg_speed should still be a real number');
 });
 
-test('lap-structure stays quiet when nothing would be merged', async () => {
-  const input = await readFixture(ORIGINALS[0]); // 4 laps, all split
+test('lap-structure warns about a fixed target, not about auto', async () => {
+  const input = await readFixture(ORIGINALS[0]); // 4 laps, every one split
 
   const fires = (opts) => analyze(input, opts).findings.some((f) => f.type === 'lap-structure');
 
-  assert.equal(fires({}), true, 'should fire at the default target of 1');
+  assert.equal(fires({ lengthsPerLap: 1 }), true, 'should fire on a fixed target of 1');
   // With a target high enough that no lap exceeds it, no distance is lost, so
   // the red "22 lengths would become 22" warning had no business appearing.
   assert.equal(fires({ lengthsPerLap: 20 }), false, 'fired when nothing would be merged');
+  // The warning says "your setting may be wrong". auto has no setting to be
+  // wrong about -- it measures each lap on its own.
+  assert.equal(fires({}), false, 'auto should not warn about its own choice');
 });

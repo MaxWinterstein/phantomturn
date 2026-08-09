@@ -66,7 +66,11 @@ test('an unknown message survives a roundtrip byte for byte', () => {
   // The whole reason this library patches bytes instead of decoding: a
   // proprietary message it has never heard of must come back untouched.
   const file = buildFit([
-    { globalNum: 20, fields: [{ num: 253, size: 4, base: UINT32 }], payload: [1, 2, 3, 4] },
+    {
+      globalNum: 20,
+      fields: [{ num: 253, size: 4, base: UINT32 }],
+      payload: [1, 2, 3, 4],
+    },
     {
       globalNum: 61_616, // no such message in the FIT profile
       fields: [{ num: 7, size: 6, base: BYTE }],
@@ -92,7 +96,11 @@ test('an unknown message survives a roundtrip byte for byte', () => {
 
 test('float32 fields read and write as floats, not as their bit pattern', () => {
   const file = buildFit([
-    { globalNum: 20, fields: [{ num: 7, size: 4, base: FLOAT32 }], payload: [0, 0, 0x48, 0x41] },
+    {
+      globalNum: 20,
+      fields: [{ num: 7, size: 4, base: FLOAT32 }],
+      payload: [0, 0, 0x48, 0x41],
+    },
   ]);
   const { header, frames } = readFit(file);
   const frame = frames.find((f) => f.kind === 'data');
@@ -107,7 +115,11 @@ test('float32 fields read and write as floats, not as their bit pattern', () => 
 
 test('patchFrame refuses NaN and Infinity instead of writing zero', () => {
   const file = buildFit([
-    { globalNum: 20, fields: [{ num: 7, size: 4, base: UINT32 }], payload: [1, 0, 0, 0] },
+    {
+      globalNum: 20,
+      fields: [{ num: 7, size: 4, base: UINT32 }],
+      payload: [1, 0, 0, 0],
+    },
   ]);
   const frame = readFit(file).frames.find((f) => f.kind === 'data');
 
@@ -147,8 +159,16 @@ test('roundHalfEven matches Python on exact ties and near-ties alike', () => {
 
 test('malformed files are rejected rather than silently half-parsed', () => {
   const good = buildFit([
-    { globalNum: 20, fields: [{ num: 7, size: 4, base: UINT32 }], payload: [1, 0, 0, 0] },
-    { globalNum: 21, fields: [{ num: 7, size: 4, base: UINT32 }], payload: [2, 0, 0, 0] },
+    {
+      globalNum: 20,
+      fields: [{ num: 7, size: 4, base: UINT32 }],
+      payload: [1, 0, 0, 0],
+    },
+    {
+      globalNum: 21,
+      fields: [{ num: 7, size: 4, base: UINT32 }],
+      payload: [2, 0, 0, 0],
+    },
   ]);
   assert.doesNotThrow(() => readFit(good));
 
@@ -181,7 +201,13 @@ test('a legal zero header CRC is left alone', () => {
   // 0x0000 means "no header CRC" and is valid. Recomputing it would change
   // bytes on a file that asked us not to, breaking the roundtrip guarantee.
   const file = buildFit(
-    [{ globalNum: 20, fields: [{ num: 7, size: 4, base: UINT32 }], payload: [1, 0, 0, 0] }],
+    [
+      {
+        globalNum: 20,
+        fields: [{ num: 7, size: 4, base: UINT32 }],
+        payload: [1, 0, 0, 0],
+      },
+    ],
     { headerCrc: false },
   );
   const { header, frames } = readFit(file);
@@ -196,7 +222,11 @@ test('a legal zero header CRC is left alone', () => {
 
 test('getField rejects an out-of-range index in both directions', () => {
   const file = buildFit([
-    { globalNum: 20, fields: [{ num: 7, size: 4, base: UINT32 }], payload: [1, 0, 0, 0] },
+    {
+      globalNum: 20,
+      fields: [{ num: 7, size: 4, base: UINT32 }],
+      payload: [1, 0, 0, 0],
+    },
   ]);
   const frame = readFit(file).frames.find((f) => f.kind === 'data');
 

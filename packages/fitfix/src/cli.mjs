@@ -9,9 +9,11 @@ const USAGE = `usage: fitfix <in.fit> [out.fit] [options]
 
 Assumptions, all calibrated on a Forerunner 265 in a 50 m pool:
 
-  --lengths-per-lap=N      pool lengths one lap button press covers
-                           (default ${DEFAULTS.lengthsPerLap}; raise it if you lap per interval,
-                           or the merge will delete real distance)
+  --lengths-per-lap=N|auto pool lengths one lap button press covers
+                           (default ${DEFAULTS.lengthsPerLap}: worked out per lap from the
+                           file, which is the only way to get a swim right
+                           when you lapped every length at first and then
+                           swam a continuous block)
   --stroke-split=N         breaststroke at or above N strokes per length
                            (default ${DEFAULTS.strokeSplit}; roughly halve it for a 25 m pool)
   --duration-split=N       seconds per length, cross-checks --stroke-split
@@ -42,9 +44,14 @@ const numeric = {
 };
 for (const [flag, key] of Object.entries(numeric)) {
   if (flags[flag] === undefined) continue;
+  if (key === 'lengthsPerLap' && flags[flag] === 'auto') {
+    opts[key] = 'auto';
+    continue;
+  }
   const n = Number(flags[flag]);
   if (!Number.isFinite(n) || n <= 0) {
-    console.error(`--${flag} needs a positive number, got "${flags[flag]}"`);
+    const allowed = key === 'lengthsPerLap' ? 'a positive number or "auto"' : 'a positive number';
+    console.error(`--${flag} needs ${allowed}, got "${flags[flag]}"`);
     process.exit(2);
   }
   opts[key] = n;
@@ -65,6 +72,16 @@ if (flags['dry-run']) {
 }
 
 const { bytes, summary, info } = repair(u8, opts);
+
+if (opts.lengthsPerLap === 'auto' && info.lengthUnitS) {
+  const varied = new Set(info.lapTargets).size > 1;
+  console.log(
+    `  one length reads as ~${info.lengthUnitS.toFixed(0)}s; ` +
+      (varied
+        ? `lengths per lap varied: ${info.lapTargets.filter((_, i) => info.lapLengths[i].length).join(', ')}`
+        : 'one length per lap throughout'),
+  );
+}
 
 // Loud, before anything else: this is the case where the output is garbage.
 const structure = info.findings.find((f) => f.type === 'lap-structure');

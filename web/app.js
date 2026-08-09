@@ -91,7 +91,7 @@ const findingOrder = (f) => (f.type === 'lap-structure' ? 0 : 1);
  * reported it.
  */
 const CONTROLS = {
-  lengthsPerLap: { kind: 'number', min: 1, max: 64 },
+  lengthsPerLap: { kind: 'number', min: 1, max: 64, auto: true },
   strokeSplit: { kind: 'number', min: 1, max: 500 },
   durationSplit: { kind: 'number', min: 1, max: 900 },
   reclassifyStroke: { kind: 'checkbox' },
@@ -123,11 +123,17 @@ function readOptions() {
       opts[key] = input.checked;
       continue;
     }
-    const raw = Number(input.value);
+    const text = input.value.trim();
+    if (spec.auto && text.toLowerCase() === 'auto') {
+      opts[key] = 'auto';
+      input.setAttribute('aria-invalid', 'false');
+      continue;
+    }
+    const raw = Number(text);
     const ok = Number.isFinite(raw) && raw >= spec.min && raw <= spec.max;
     const value = ok ? Math.floor(raw) : DEFAULTS[key];
     opts[key] = value;
-    input.setAttribute('aria-invalid', String(!ok && input.value.trim() !== ''));
+    input.setAttribute('aria-invalid', String(!ok && text !== ''));
     // Only rewrite the field once it has lost focus, so typing "12" does not
     // get clobbered halfway through at "1".
     if (!ok && document.activeElement !== input) input.value = value;
@@ -142,12 +148,24 @@ function renderOptionState(opts) {
   optionsBadge.textContent = `${changed} changed`;
 
   const n = opts.lengthsPerLap;
+  const unit = state.output?.info?.lengthUnitS;
+  if (n === 'auto') {
+    assumption.className = 'assumption assumption-auto';
+    assumption.innerHTML =
+      '🔎 <strong>Lengths per lap worked out from this file.</strong> ' +
+      (unit ? `One length reads as about ${Math.round(unit)} seconds, ` : '') +
+      'and each lap is measured against that, so a swim you lapped inconsistently still ' +
+      'comes out right. Check the numbers before you trust the file — and set a number ' +
+      'under Assumptions if you disagree.';
+    return;
+  }
+  assumption.className = 'assumption';
   assumption.innerHTML =
     n === 1
       ? '⚠️ <strong>This assumes one lap button press per pool length.</strong> Every lap is ' +
         'merged down to a single length. If you lap once per interval instead — or not at all, ' +
-        'letting auto-pause do the work — that throws away real distance. Change it under ' +
-        'Assumptions, and check the numbers before you trust the file.'
+        'letting auto-pause do the work — that throws away real distance. Set it back to ' +
+        '<strong>auto</strong> under Assumptions, and check the numbers before you trust the file.'
       : `⚠️ <strong>This assumes ${esc(n)} pool lengths per lap button press.</strong> Laps ` +
         `holding more than ${esc(n)} lengths are merged down to ${esc(n)}; laps with fewer are ` +
         'left alone. Check the numbers before you trust the file.';
@@ -180,7 +198,12 @@ function render() {
   const distanceBefore = lengthsBefore * info.poolM;
 
   statsEl.innerHTML = [
-    statCard({ label: 'Distance', value: summary.distanceM, was: distanceBefore, unit: ' m' }),
+    statCard({
+      label: 'Distance',
+      value: summary.distanceM,
+      was: distanceBefore,
+      unit: ' m',
+    }),
     statCard({ label: 'Lengths', value: summary.lengths, was: lengthsBefore }),
     statCard({ label: 'Swim time', value: fmtSeconds(summary.swimS) }),
   ].join('');
@@ -217,15 +240,18 @@ function render() {
 
 function runRepair() {
   const opts = readOptions();
-  renderOptionState(opts);
   try {
     state.output = repair(state.input, opts);
+    // After the repair, not before: the inferred length unit is part of what
+    // the banner reports, and it does not exist until the file has been read.
+    renderOptionState(opts);
     errorBox.hidden = true;
     result.hidden = false;
     dropzone.hidden = true;
     sampleLine.hidden = true;
     render();
   } catch (err) {
+    renderOptionState(opts);
     showError(err.message);
   }
 }
@@ -266,15 +292,18 @@ function prepareShare() {
  */
 function withBusy(work) {
   busy.hidden = false;
-  requestAnimationFrame(() =>
-    requestAnimationFrame(() => {
-      try {
-        work();
-      } finally {
-        busy.hidden = true;
-      }
-    }),
-  );
+  // A timer, not requestAnimationFrame. The double-rAF trick is the usual way
+  // to guarantee a paint first, but rAF does not run at all in a background
+  // tab -- or in headless Chromium, which is how this was caught -- and the
+  // page would then sit on "Working..." forever. A short timeout always fires,
+  // and in practice still paints first.
+  setTimeout(() => {
+    try {
+      work();
+    } finally {
+      busy.hidden = true;
+    }
+  }, 16);
 }
 
 function loadBytes(name, label, bytes) {
