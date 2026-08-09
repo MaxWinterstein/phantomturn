@@ -19,24 +19,50 @@ import { readFile } from 'node:fs/promises';
 export const ORIGINALS = ['swim-01.fit', 'swim-02.fit', 'swim-03.fit', 'swim-04.fit'];
 
 /**
- * Expected output of the Python reference, keyed by original.
+ * Output of the Python reference, keyed by original.
  *
- * Two originals are deliberately absent:
+ * These are what `reference/repair_swim_fit.py` produces, regenerated from the
+ * committed (already anonymized) inputs -- so the comparison is against an
+ * independent implementation rather than against this codebase.
  *
- *   swim-01  contains micro laps, from double-tapping the lap button, which
- *            only the one-off Python script merges. Its distance still comes
- *            out right; the lap structure differs. Covered by edgecases.
- *   swim-04  post-dates the reference implementation. Producing a golden for
- *            it would mean generating one with this codebase, which would make
- *            the comparison "JS agrees with JS" -- worthless. It earns its
- *            keep in the roundtrip, auto-lengths and anonymize suites instead.
+ * IMPORTANT: the reference implements exactly one rule -- merge every active
+ * length in a lap into one -- which is `lengthsPerLap: 1`. It has no notion of
+ * 'auto'. So the comparison must run the JS in that mode, and `opts` below
+ * says so explicitly rather than relying on a default that has since changed.
+ * On swim-04 the two genuinely disagree: the reference gives 550 m, auto gives
+ * 1100 m, and auto is the one that matches what the swimmer actually swam.
  *
- * distanceM and lengths come from the calibration table in the handover and
- * were confirmed against the swimmer's own count.
+ * swim-01 is deliberately absent: it also contains micro laps, from
+ * double-tapping the lap button, which only a one-off variant of the script
+ * merges. Its distance still comes out right; the lap structure differs. It is
+ * covered by edgecases instead.
+ *
+ * distanceM and lengths are what the reference produces in that mode -- not
+ * necessarily what was swum. The swimmer's confirmed counts live in
+ * auto-lengths.test.mjs.
  */
 export const GOLDEN = {
-  'swim-02.fit': { golden: 'swim-02_fixed.fit', distanceM: 900, lengths: 18 },
-  'swim-03.fit': { golden: 'swim-03_fixed.fit', distanceM: 1000, lengths: 20 },
+  'swim-02.fit': {
+    golden: 'swim-02_fixed.fit',
+    opts: { lengthsPerLap: 1 },
+    distanceM: 900,
+    lengths: 18,
+  },
+  'swim-03.fit': {
+    golden: 'swim-03_fixed.fit',
+    opts: { lengthsPerLap: 1 },
+    distanceM: 1000,
+    lengths: 20,
+  },
+  'swim-04.fit': {
+    golden: 'swim-04_fixed.fit',
+    opts: { lengthsPerLap: 1 },
+    // The reference's answer, and wrong about this swim -- it cannot express
+    // mixed lapping. Kept anyway: it still proves the two implementations
+    // agree byte for byte when asked the same question.
+    distanceM: 550,
+    lengths: 11,
+  },
 };
 
 export const readFixture = async (name) =>

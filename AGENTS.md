@@ -112,6 +112,31 @@ The committed fixtures were regenerated from the raw exports with the
 keep-list anonymizer, so the goldens are still Python's output — not this
 codebase agreeing with itself.
 
+### Regenerating a golden
+
+The reference runs, and reproduces the committed goldens byte for byte from
+the committed (already anonymized) inputs — which is the strongest available
+demonstration that anonymizing and repairing really do commute:
+
+```sh
+pkgx +python.org -- python3 -m pip install --target=/tmp/pylibs fitdecode
+PYTHONPATH=/tmp/pylibs pkgx +python.org -- python3 \
+  reference/repair_swim_fit.py \
+  packages/fitfix/test/fixtures/swim-04.fit \
+  packages/fitfix/test/fixtures/swim-04_fixed.fit
+```
+
+**The reference implements one rule: merge every active length in a lap into
+one.** That is `lengthsPerLap: 1`, and it has no notion of `'auto'`. So the
+golden test runs the JS in that mode — `GOLDEN[...].opts` says so explicitly
+rather than leaning on a default that has already changed once. Never
+"fix" a golden by regenerating it with this codebase; that turns the whole
+suite into JS agreeing with JS.
+
+On swim-04 the two implementations genuinely disagree — 550 m against auto's
+1100 m — and `golden.test.mjs` asserts the disagreement so that it cannot
+quietly vanish.
+
 ## Before this repository goes public
 
 It is private today, and a few things are deliberately parked until it is not:

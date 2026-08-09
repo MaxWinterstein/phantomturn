@@ -10,6 +10,13 @@ it they are just opaque blobs nobody can regenerate.
 
 It is not part of the npm package and is not run by CI.
 
+NOTE ON SCOPE: this merges every active length in a lap into one, full stop.
+That is equivalent to the JavaScript's `lengthsPerLap: 1`, and it is why
+golden.test.mjs runs the JS in that mode rather than on its default. The
+JavaScript has since grown `lengthsPerLap: 'auto'`, which resolves each lap
+separately; on a file with mixed lapping the two therefore disagree, and that
+disagreement is asserted rather than papered over.
+
 Fixes three recurring faults:
 
  1. PHANTOM TURNS
