@@ -55,10 +55,11 @@ applied.
 plain-language list of what was taken out. `audit(bytes)` returns a list of
 identity fields that survived; empty means clean. Both are browser-safe.
 
-**`lap-structure` is the one finding you must not ignore.** It means the file
-does not look like one lap button press per length, so merging will delete real
-distance rather than phantom turns. `repair()` still does what it is told —
-this is a report, not a refusal.
+**`lap-structure` is the one finding you must not ignore.** It fires only when
+`lengthsPerLap` is a fixed number, and means the file does not look like that
+number — so merging will delete real distance rather than phantom turns.
+`repair()` still does what it is told; this is a report, not a refusal. With
+`'auto'` it never fires, because there is no setting to be wrong about.
 
 ## Options
 
@@ -112,15 +113,20 @@ is the one that puts the halves back together.
 
 ## Known limits
 
-- Assumes one lap button press per length; lapping per interval loses distance.
+- `lengthsPerLap: 'auto'` is a heuristic, tuned on four files. It is checked
+  against the swimmer's confirmed counts, but it is still inference — read the
+  before/after numbers, and pass a number when you disagree.
+- **Merges only, never splits.** A turn the watch *invented* can be undone; one
+  it *missed* — two real lengths recorded as one — cannot.
 - `strokeSplit: 40` depends on stroke length *and* pool length. Halve it for a
   25 m pool. It should be derived from the session's own stroke distribution.
-- Freestyle and breaststroke only.
+- Freestyle and breaststroke only. A backstroke length is reclassified as one of
+  those two rather than recognised.
 - Multisport files are rejected; the guard is untested for lack of a sample.
 - `timestamp` is never written. Fine for Garmin Connect exports, where every
   summary message holds the activity start. A device writing segment ends there
   would need a timestamp update after a merge.
-- Tested against a Forerunner 265, 50 m pool, three files.
+- Tested against a Forerunner 265, 50 m pool, four sessions from one swimmer.
 
 ## Tests
 

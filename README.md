@@ -151,9 +151,11 @@ scrubbing step that is not optional.
 - The freestyle/breaststroke split is **40 strokes per length**, calibrated in a
   50 m pool. A 25 m pool would need roughly half that. It should be derived from
   the session instead of hard-coded.
-- Freestyle and breaststroke only. No backstroke, butterfly, IM or drill.
+- Freestyle and breaststroke only. No backstroke, butterfly, IM or drill — a
+  watch that labels a length backstroke gets it silently reclassified as one of
+  the two the classifier does know.
 - Multisport files are rejected. The guard is implemented but untested.
-- Tested against a Forerunner 265, 50 m pool, three files.
+- Tested against a Forerunner 265, 50 m pool, four sessions from one swimmer.
 
 ## Licence
 
