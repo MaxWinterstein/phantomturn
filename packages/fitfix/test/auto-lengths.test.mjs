@@ -13,13 +13,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { analyze, repair } from '../src/swim-repair.js';
-import { readFixture } from './fixtures.mjs';
+import { ORIGINALS, readFixture } from './fixtures.mjs';
 
 /** Confirmed by the swimmer, not derived from the files. */
 const TRUTH = {
   'swim-01.fit': { lengths: 4, distanceM: 200 },
   'swim-02.fit': { lengths: 18, distanceM: 900 },
   'swim-03.fit': { lengths: 20, distanceM: 1000 },
+  'swim-04.fit': { lengths: 22, distanceM: 1100 },
 };
 
 for (const [name, want] of Object.entries(TRUTH)) {
@@ -61,6 +62,30 @@ test('auto reports the unit it inferred', async () => {
   assert.equal(info.lapTargets.length, info.lapLengths.length, 'one target per lap');
 });
 
+test('auto resolves each lap separately when the lapping was inconsistent', async () => {
+  /*
+   * swim-04 is the file the whole feature exists for: eight laps of one length
+   * each, then a continuous block of eleven, then one of seven. No single
+   * number describes it -- a fixed 1 turns 1350 m into 550 m, and a fixed 11
+   * merges nothing at all.
+   */
+  const input = await readFixture('swim-04.fit');
+  const info = analyze(input, { lengthsPerLap: 'auto' });
+
+  const swimTargets = info.swimLaps.map((l) => info.lapTargets[l.lap]);
+  assert.ok(new Set(swimTargets).size > 1, 'targets should differ between laps');
+  assert.deepEqual(
+    swimTargets.filter((n) => n > 1).sort((a, b) => b - a),
+    [9, 4],
+    'block sizes',
+  );
+
+  // Both dead ends a fixed number leads to.
+  assert.equal(repair(input, { lengthsPerLap: 1 }).summary.distanceM, 550);
+  assert.equal(repair(input, { lengthsPerLap: 11 }).summary.distanceM, 1350);
+  assert.equal(repair(input, { lengthsPerLap: 'auto' }).summary.distanceM, 1100);
+});
+
 test('a fixed number still overrides auto', async () => {
   const input = await readFixture('swim-01.fit');
 
@@ -72,7 +97,7 @@ test('a fixed number still overrides auto', async () => {
 test('auto never invents lengths the watch did not record', async () => {
   // It merges, it never splits, so a missed turn stays missed -- the estimate
   // is always capped at the recorded count.
-  for (const name of ['swim-01.fit', 'swim-02.fit', 'swim-03.fit']) {
+  for (const name of ORIGINALS) {
     const input = await readFixture(name);
     const info = analyze(input, { lengthsPerLap: 'auto' });
     info.lapLengths.forEach((ids, li) => {

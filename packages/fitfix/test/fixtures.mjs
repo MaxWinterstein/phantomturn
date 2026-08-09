@@ -16,15 +16,20 @@ import { readFile } from 'node:fs/promises';
  * called `<activityId>_ACTIVITY.fit`, and that id resolves to a real activity
  * on connect.garmin.com. The filename is personal data too.
  */
-export const ORIGINALS = ['swim-01.fit', 'swim-02.fit', 'swim-03.fit'];
+export const ORIGINALS = ['swim-01.fit', 'swim-02.fit', 'swim-03.fit', 'swim-04.fit'];
 
 /**
  * Expected output of the Python reference, keyed by original.
  *
- * File 1 is deliberately absent. It also contains micro laps -- from
- * double-tapping the lap button -- which only the one-off Python script merges.
- * Its distance still comes out right, but the lap structure differs, so it is
- * covered by edgecases instead.
+ * Two originals are deliberately absent:
+ *
+ *   swim-01  contains micro laps, from double-tapping the lap button, which
+ *            only the one-off Python script merges. Its distance still comes
+ *            out right; the lap structure differs. Covered by edgecases.
+ *   swim-04  post-dates the reference implementation. Producing a golden for
+ *            it would mean generating one with this codebase, which would make
+ *            the comparison "JS agrees with JS" -- worthless. It earns its
+ *            keep in the roundtrip, auto-lengths and anonymize suites instead.
  *
  * distanceM and lengths come from the calibration table in the handover and
  * were confirmed against the swimmer's own count.
