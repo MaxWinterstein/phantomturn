@@ -16,7 +16,22 @@ import { readFile } from 'node:fs/promises';
  * called `<activityId>_ACTIVITY.fit`, and that id resolves to a real activity
  * on connect.garmin.com. The filename is personal data too.
  */
-export const ORIGINALS = ['swim-01.fit', 'swim-02.fit', 'swim-03.fit', 'swim-04.fit'];
+export const ORIGINALS = [
+  'swim-01.fit',
+  'swim-02.fit',
+  'swim-03.fit',
+  'swim-04.fit',
+  'swim-05.fit',
+];
+
+/**
+ * swim-05 was swum in an **18 m pool that the watch had set to 20 m**, which
+ * the swimmer reported afterwards. Nothing in the file reveals it -- every
+ * duration and stroke count is self-consistent, only the metres are wrong --
+ * so tests that care about distance must pass `poolLength: 18`. Left uncorrected
+ * in the fixture on purpose: the wrongness is the thing worth testing.
+ */
+export const POOL_OVERRIDE = { 'swim-05.fit': 18 };
 
 /**
  * Output of the Python reference, keyed by original.
@@ -41,27 +56,46 @@ export const ORIGINALS = ['swim-01.fit', 'swim-02.fit', 'swim-03.fit', 'swim-04.
  * necessarily what was swum. The swimmer's confirmed counts live in
  * auto-lengths.test.mjs.
  */
+/**
+ * Everything the reference hardcodes, so the JS can be asked the same question
+ * it answers. Anything the JS has since learned to do differently -- per-lap
+ * length targets, thresholds that scale with pool size -- has to be pinned back
+ * here, or the comparison silently becomes a comparison of two questions.
+ *
+ * `strokeSplit: 40` matters only for swim-05: at 50 m the scaled default works
+ * out to exactly 40, so the older fixtures never noticed.
+ */
+const AS_REFERENCE = { lengthsPerLap: 1, strokeSplit: 40, durationSplit: 100 };
+
 export const GOLDEN = {
   'swim-02.fit': {
     golden: 'swim-02_fixed.fit',
-    opts: { lengthsPerLap: 1 },
+    opts: AS_REFERENCE,
     distanceM: 900,
     lengths: 18,
   },
   'swim-03.fit': {
     golden: 'swim-03_fixed.fit',
-    opts: { lengthsPerLap: 1 },
+    opts: AS_REFERENCE,
     distanceM: 1000,
     lengths: 20,
   },
   'swim-04.fit': {
     golden: 'swim-04_fixed.fit',
-    opts: { lengthsPerLap: 1 },
+    opts: AS_REFERENCE,
     // The reference's answer, and wrong about this swim -- it cannot express
     // mixed lapping. Kept anyway: it still proves the two implementations
     // agree byte for byte when asked the same question.
     distanceM: 550,
     lengths: 11,
+  },
+  'swim-05.fit': {
+    golden: 'swim-05_fixed.fit',
+    opts: AS_REFERENCE,
+    // 440 m because the reference trusts the file's 20 m pool. The swim was in
+    // an 18 m pool, and how many lengths it really held is still open.
+    distanceM: 440,
+    lengths: 22,
   },
 };
 

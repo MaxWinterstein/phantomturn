@@ -126,16 +126,54 @@ PYTHONPATH=/tmp/pylibs pkgx +python.org -- python3 \
   packages/fitfix/test/fixtures/swim-04_fixed.fit
 ```
 
-**The reference implements one rule: merge every active length in a lap into
-one.** That is `lengthsPerLap: 1`, and it has no notion of `'auto'`. So the
-golden test runs the JS in that mode — `GOLDEN[...].opts` says so explicitly
-rather than leaning on a default that has already changed once. Never
-"fix" a golden by regenerating it with this codebase; that turns the whole
-suite into JS agreeing with JS.
+**The reference hardcodes its assumptions, and the JS has since moved past
+several of them.** `AS_REFERENCE` in `fixtures.mjs` pins them all back:
+`lengthsPerLap: 1` (it merges every active length in a lap, full stop),
+`strokeSplit: 40` and `durationSplit: 100` (per-length constants fitted at
+50 m, where the JS's scaled defaults happen to land on exactly the same
+numbers — which is why swim-05, an 18 m pool, was the first fixture to notice).
+
+Every time the JS learns to do something the reference cannot, that constant
+has to be added to `AS_REFERENCE`, or the comparison quietly becomes a
+comparison of two different questions. Never "fix" a golden by regenerating it
+with this codebase; that turns the whole suite into JS agreeing with JS.
 
 On swim-04 the two implementations genuinely disagree — 550 m against auto's
 1100 m — and `golden.test.mjs` asserts the disagreement so that it cannot
 quietly vanish.
+
+## The fixtures, and what each one is for
+
+Every one is a different shape of the same problem. Adding a file that
+duplicates an existing shape buys nothing; adding one that breaks a new
+assumption is worth a lot.
+
+| fixture | pool | what makes it useful | confirmed truth |
+| ------- | ---- | -------------------- | --------------- |
+| swim-01 | 50 m | every length split, so no intact one exists to learn a unit from; also micro laps from double-tapping | 4 lengths / 200 m |
+| swim-02 | 50 m | occasional splits among clean lengths, mixed freestyle and breaststroke | 18 / 900 m |
+| swim-03 | 50 m | the same, fewer splits | 20 / 1000 m |
+| swim-04 | 50 m | **mixed lapping** — eight laps of one length, then blocks of 11 and 7. No single `lengthsPerLap` describes it | 22 / 1100 m |
+| swim-05 | **18 m**, recorded as 20 m | short pool, **wrong pool size**, and the file that breaks the unit estimator | **still open — see below** |
+
+### Open question: how long was swim-05?
+
+`auto` reports 47 lengths. Total active time ÷ median length and total strokes
+÷ median strokes both independently say **~64**, and the watch recorded 64.
+
+The `max()` in `estimateLengthUnit()` is justified on the grounds that both
+estimators err small. That holds for swim-01 to swim-04 and is **false in
+general**: here the lap-total estimator errs large, because 64 lengths across 22
+laps makes the median lap total one-and-a-half lengths. Using the smaller
+estimator fixes swim-05 and breaks swim-01. Each rule is 4-for-5, failing on a
+different file.
+
+**Do not retune this against a guess.** The swimmer has not confirmed swim-05's
+count, and fitting a third rule to five points is how two confidently wrong
+answers already got shipped in this project. Until it is confirmed, the
+disagreement is reported as an `uncertain-lengths` finding with both readings,
+and swim-05 is deliberately absent from the `TRUTH` table in
+`auto-lengths.test.mjs`.
 
 ## Before this repository goes public
 

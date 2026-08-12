@@ -33,12 +33,13 @@ watch switches stroke at the turn it imagined. Two symptoms, one cause.
 
 Three real sessions, all Forerunner 265 in a 50 m pool:
 
-| Watch said        | Actually swum   | What went wrong                    |
-| ----------------- | --------------- | ---------------------------------- |
-| 450 m / 9 lengths | 200 m / 4       | 4 phantom turns                    |
-| 1100 m / 22       | 900 m / 18      | 4 phantom turns                    |
-| 1100 m / 22       | 1000 m / 20     | 2 phantom turns                    |
-| 1350 m / 27       | 1100 m / 22     | phantom turns *and* mixed lapping  |
+| Watch said        | Actually swum   | What went wrong                       |
+| ----------------- | --------------- | ------------------------------------- |
+| 450 m / 9 lengths | 200 m / 4       | 4 phantom turns                       |
+| 1100 m / 22       | 900 m / 18      | 4 phantom turns                       |
+| 1100 m / 22       | 1000 m / 20     | 2 phantom turns                       |
+| 1350 m / 27       | 1100 m / 22     | phantom turns *and* mixed lapping     |
+| 1280 m / 64       | still open      | phantom turns, and an 18 m pool the watch had set to 20 m |
 
 That last one is why lengths-per-lap is worked out per lap rather than set
 once: eight laps of a single length, then a continuous block of eleven, then
