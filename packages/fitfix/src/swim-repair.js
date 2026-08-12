@@ -67,12 +67,29 @@ export const DEFAULTS = {
    * button for the first few lengths and then swam a continuous block.
    */
   lengthsPerLap: 'auto',
-  /** Strokes per length at or above which breaststroke is assumed. Depends on
-   *  stroke length *and* pool length -- halve it for a 25 m pool. */
-  strokeSplit: 40,
+  /**
+   * Strokes per length at or above which breaststroke is assumed.
+   *
+   * 'auto' derives it from the pool: STROKES_PER_100M scaled to one length, so
+   * the same setting works in a 50 m and an 18 m pool. A fixed number is a
+   * per-length count and only means anything for one pool size -- 40 was
+   * calibrated at 50 m, and in an 18 m pool nothing ever reaches it, so every
+   * length read as freestyle including the breaststroke ones.
+   */
+  strokeSplit: 'auto',
   /** Seconds per length used to cross-check strokeSplit. When the two
-   *  disagree the lap is reported as ambiguous and the watch's label kept. */
-  durationSplit: 100,
+   *  disagree the lap is reported as ambiguous and the watch's label kept.
+   *  'auto' scales with the pool, same as strokeSplit. */
+  durationSplit: 'auto',
+  /**
+   * Metres per length. `null` trusts the pool_length the watch recorded.
+   *
+   * Set it when the watch is wrong -- a mis-set pool size makes every distance
+   * in the file wrong by a fixed ratio, and nothing in the data reveals it.
+   * Overriding also rewrites session.pool_length in the output, so whatever
+   * reads the file next recomputes from the right number.
+   */
+  poolLength: null,
   /** Overwrite the watch's own stroke classification. */
   reclassifyStroke: true,
   /** Set elapsed time to timer time when the timer was never paused. */
@@ -165,6 +182,20 @@ export function mergeToTarget(indices, target, durationOf) {
   return groups;
 }
 
+/*
+ * Calibration expressed per 100 m rather than per length, so that pool size
+ * cancels out. Both figures reproduce the old per-50 m constants exactly --
+ * 80 * 50/100 = 40 strokes, 200 * 50/100 = 100 s -- so nothing changes for the
+ * pool they were fitted in, and an 18 m pool gets 14.4 strokes and 36 s
+ * instead of thresholds it could never reach.
+ */
+const STROKES_PER_100M = 80;
+const SECONDS_PER_100M = 200;
+
+/** Resolves a threshold that may be 'auto', scaling it to one length. */
+const perLength = (setting, poolM, per100) =>
+  Number.isFinite(setting) ? setting : (per100 * poolM) / 100;
+
 const median = (xs) => {
   const s = [...xs].sort((a, b) => a - b);
   if (!s.length) return 0;
@@ -193,14 +224,27 @@ const median = (xs) => {
  */
 function estimateLengthUnit(lapGroups, durationOf) {
   const all = lapGroups.flat();
-  if (!all.length) return 0;
+  if (!all.length) return { unit: 0, candidates: {} };
 
   const durations = all.map(durationOf).sort((a, b) => a - b);
-  const longerHalf = median(durations.slice(Math.floor(durations.length / 2)));
-  const lapTotals = median(
+  const fromLengths = median(durations.slice(Math.floor(durations.length / 2)));
+  const fromLapTotals = median(
     lapGroups.filter((g) => g.length).map((g) => g.reduce((a, k) => a + durationOf(k), 0)),
   );
-  return Math.max(longerHalf, lapTotals);
+  return {
+    unit: Math.max(fromLengths, fromLapTotals),
+    candidates: { fromLengths, fromLapTotals },
+  };
+}
+
+/** Total lengths a given unit implies across every lap. */
+function impliedTotal(lapGroups, durationOf, unit) {
+  if (!unit) return 0;
+  return lapGroups.reduce((a, g) => {
+    if (!g.length) return a;
+    const total = g.reduce((x, k) => x + durationOf(k), 0);
+    return a + Math.min(g.length, Math.max(1, Math.round(total / unit)));
+  }, 0);
 }
 
 /**
@@ -217,18 +261,34 @@ function estimateLengthUnit(lapGroups, durationOf) {
 function resolveLapTargets(lapGroups, durationOf, lengthsPerLap) {
   if (lengthsPerLap !== 'auto') {
     const n = Number.isFinite(lengthsPerLap) ? Math.max(1, Math.floor(lengthsPerLap)) : 1;
-    return { targets: lapGroups.map(() => n), unit: null };
+    return { targets: lapGroups.map(() => n), unit: null, alternative: null };
   }
 
-  const unit = estimateLengthUnit(lapGroups, durationOf);
-  if (!unit) return { targets: lapGroups.map(() => 1), unit: null };
+  const { unit, candidates } = estimateLengthUnit(lapGroups, durationOf);
+  if (!unit) return { targets: lapGroups.map(() => 1), unit: null, alternative: null };
 
   const targets = lapGroups.map((group) => {
     if (!group.length) return 1;
     const total = group.reduce((a, k) => a + durationOf(k), 0);
     return Math.min(group.length, Math.max(1, Math.round(total / unit)));
   });
-  return { targets, unit };
+
+  /*
+   * The two estimators can imply materially different swims, and which one is
+   * right is not decidable from the file. The smaller unit was correct on a
+   * session lapped inconsistently in a short pool; the larger was correct on a
+   * session where every single length had been split and no intact one
+   * remained. Rather than pick silently, report the disagreement.
+   */
+  const other = Math.min(candidates.fromLengths, candidates.fromLapTotals);
+  const chosen = impliedTotal(lapGroups, durationOf, unit);
+  const alternate = impliedTotal(lapGroups, durationOf, other);
+  const alternative =
+    other > 0 && Math.abs(alternate - chosen) > Math.max(1, chosen * 0.1)
+      ? { unitS: other, lengths: alternate, chosenUnitS: unit, chosenLengths: chosen }
+      : null;
+
+  return { targets, unit, alternative };
 }
 
 /**
@@ -246,8 +306,19 @@ export function analyze(u8, opts = {}) {
   if (sessions.length > 1)
     throw new Error(`${sessions.length} sessions (multisport) -- not supported`);
 
-  const poolM = getField(session, F.session.poolLength) / 100;
-  if (!poolM) throw new Error('no pool_length -- not a pool swim file?');
+  const recordedPoolM = getField(session, F.session.poolLength) / 100;
+  if (!recordedPoolM) throw new Error('no pool_length -- not a pool swim file?');
+
+  /*
+   * A wrongly configured pool size is invisible in the data -- every duration
+   * and stroke count is self-consistent, only the metres are wrong, by a fixed
+   * ratio. So it can only come from the swimmer, and when it does it has to
+   * feed the thresholds below as well as the distances.
+   */
+  const poolM = Number.isFinite(o.poolLength) && o.poolLength > 0 ? o.poolLength : recordedPoolM;
+  const strokeSplit = perLength(o.strokeSplit, poolM, STROKES_PER_100M);
+  const durationSplit = perLength(o.durationSplit, poolM, SECONDS_PER_100M);
+
   const timerMs = getField(session, F.session.timer);
 
   const stops = frames.filter(
@@ -310,7 +381,11 @@ export function analyze(u8, opts = {}) {
   const lapActive = lapLengths.map((ids) =>
     ids.filter((k) => getField(lengths[k], F.length.lengthType) === LENGTH_TYPE.active),
   );
-  const { targets: lapTargets, unit } = resolveLapTargets(lapActive, durationOf, o.lengthsPerLap);
+  const {
+    targets: lapTargets,
+    unit,
+    alternative,
+  } = resolveLapTargets(lapActive, durationOf, o.lengthsPerLap);
 
   const findings = [];
   const swimLaps = [];
@@ -319,7 +394,7 @@ export function analyze(u8, opts = {}) {
     if (!act.length) return;
     const durMs = act.reduce((a, k) => a + getField(lengths[k], F.length.elapsed), 0);
     const strokes = act.reduce((a, k) => a + (getField(lengths[k], F.length.strokes) ?? 0), 0);
-    const stroke = strokes >= o.strokeSplit ? 'breaststroke' : 'freestyle';
+    const stroke = strokes >= strokeSplit ? 'breaststroke' : 'freestyle';
     const deviceStroke = Object.keys(SWIM_STROKE).find(
       (k) => SWIM_STROKE[k] === getField(lengths[act[0]], F.length.swimStroke),
     );
@@ -354,8 +429,8 @@ export function analyze(u8, opts = {}) {
     for (const group of mergeToTarget(act, target, (k) => getField(lengths[k], F.length.elapsed))) {
       const gDurMs = group.reduce((a, k) => a + getField(lengths[k], F.length.elapsed), 0);
       const gStrokes = group.reduce((a, k) => a + (getField(lengths[k], F.length.strokes) ?? 0), 0);
-      const byStrokes = gStrokes >= o.strokeSplit;
-      const byTime = gDurMs / 1000 >= o.durationSplit;
+      const byStrokes = gStrokes >= strokeSplit;
+      const byTime = gDurMs / 1000 >= durationSplit;
       const gStroke = byStrokes ? 'breaststroke' : 'freestyle';
       const gDevice = Object.keys(SWIM_STROKE).find(
         (k) => SWIM_STROKE[k] === getField(lengths[group[0]], F.length.swimStroke),
@@ -428,6 +503,27 @@ export function analyze(u8, opts = {}) {
     }
   }
 
+  /*
+   * Two readings of the same file, and the data does not settle which is
+   * right. Loud, because the difference is real distance either way -- and
+   * because a heuristic that quietly picks one is how this tool previously
+   * deleted a third of a swim.
+   */
+  if (alternative) {
+    findings.push({
+      type: 'uncertain-lengths',
+      chosenLengths: alternative.chosenLengths,
+      chosenUnitS: alternative.chosenUnitS,
+      alternateLengths: alternative.lengths,
+      alternateUnitS: alternative.unitS,
+      note:
+        `One length could be ${alternative.chosenUnitS.toFixed(0)}s, giving ` +
+        `${alternative.chosenLengths} lengths, or ${alternative.unitS.toFixed(0)}s, giving ` +
+        `${alternative.lengths}. The file does not settle it — check which matches the swim ` +
+        'you remember, and set lengths per lap yourself if neither does.',
+    });
+  }
+
   const elapsedMs = getField(session, F.session.elapsed);
   if (o.normalizeElapsed && pauses <= 0 && elapsedMs > timerMs)
     findings.push({
@@ -437,6 +533,12 @@ export function analyze(u8, opts = {}) {
 
   return {
     poolM,
+    /** What the watch recorded, so a caller can see it was overridden. */
+    recordedPoolM,
+    // Resolved once here and handed on, so repair() cannot scale them
+    // differently from the analysis that reported on them.
+    strokeSplit,
+    durationSplit,
     timerMs,
     elapsedMs,
     pauses,
@@ -458,7 +560,7 @@ export function analyze(u8, opts = {}) {
 export function repair(u8, opts = {}) {
   const o = { ...DEFAULTS, ...opts };
   const info = analyze(u8, o);
-  const { poolM, timerMs, pauses, lapLengths } = info;
+  const { poolM, recordedPoolM, strokeSplit, timerMs, pauses, lapLengths } = info;
   const { header, frames } = readFit(u8);
   const lengths = frames.filter((f) => f.kind === 'data' && f.globalNum === MSG.length);
 
@@ -521,7 +623,7 @@ export function repair(u8, opts = {}) {
         };
         if (o.reclassifyStroke)
           spec[F.length.swimStroke] =
-            SWIM_STROKE[strokes >= o.strokeSplit ? 'breaststroke' : 'freestyle'];
+            SWIM_STROKE[strokes >= strokeSplit ? 'breaststroke' : 'freestyle'];
         newSpecs.set(k, spec);
         newInfo.push({ durMs, active: true, strokes });
         mine.push(idx);
@@ -551,7 +653,7 @@ export function repair(u8, opts = {}) {
     };
     if (act.length && o.reclassifyStroke) {
       const kinds = new Set(
-        act.map((k) => (newInfo[k].strokes >= o.strokeSplit ? 'breaststroke' : 'freestyle')),
+        act.map((k) => (newInfo[k].strokes >= strokeSplit ? 'breaststroke' : 'freestyle')),
       );
       p[F.lap.swimStroke] = SWIM_STROKE[kinds.size === 1 ? [...kinds][0] : 'mixed'];
     }
@@ -585,6 +687,14 @@ export function repair(u8, opts = {}) {
     [F.session.strokeDistance]: ratio(distCm, strokes),
     [F.session.avgCadence]: ratio(strokes * 60, activeMs / 1000),
   };
+
+  /*
+   * Write the corrected pool size back. Every distance above is already
+   * computed from it, but leaving the field saying 20 m when the pool was 18
+   * would let anything that recomputes -- Garmin Connect included -- undo the
+   * correction and disagree with the totals in the same file.
+   */
+  if (poolM !== recordedPoolM) sessPatch[F.session.poolLength] = poolM * 100;
   // Same condition analyze() reports on. It used to write whenever the timer
   // was never paused, while analyze() only reported when there was actually
   // something to trim -- a no-op for Garmin files, where elapsed >= timer

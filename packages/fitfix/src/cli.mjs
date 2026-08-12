@@ -7,17 +7,22 @@ const USAGE = `usage: fitfix <in.fit> [out.fit] [options]
 
   --dry-run                report findings, write nothing
 
-Assumptions, all calibrated on a Forerunner 265 in a 50 m pool:
+Assumptions, calibrated on a Forerunner 265 and scaled to your pool:
 
+  --pool-length=M          metres per length, when the watch was set wrong.
+                           A mis-set pool makes every distance wrong by a
+                           fixed ratio and nothing in the data reveals it.
+                           Also rewritten into the output file.
   --lengths-per-lap=N|auto pool lengths one lap button press covers
                            (default ${DEFAULTS.lengthsPerLap}: worked out per lap from the
                            file, which is the only way to get a swim right
                            when you lapped every length at first and then
                            swam a continuous block)
-  --stroke-split=N         breaststroke at or above N strokes per length
-                           (default ${DEFAULTS.strokeSplit}; roughly halve it for a 25 m pool)
-  --duration-split=N       seconds per length, cross-checks --stroke-split
-                           (default ${DEFAULTS.durationSplit})
+  --stroke-split=N|auto    breaststroke at or above N strokes per length
+                           (default ${DEFAULTS.strokeSplit}: scaled from the pool size, so
+                           the same setting works in a 50 m and an 18 m pool)
+  --duration-split=N|auto  seconds per length, cross-checks --stroke-split
+                           (default ${DEFAULTS.durationSplit}, scaled the same way)
   --keep-stroke            leave the watch's stroke classification alone
   --keep-elapsed           leave total elapsed time as recorded`;
 
@@ -36,28 +41,46 @@ const pos = args.filter((a) => !a.startsWith('--'));
 const src = pos[0];
 const dst = pos[1] ?? `${src.replace(/\.fit$/i, '')}_fixed.fit`;
 
-const opts = { ...DEFAULTS };
-const numeric = {
-  'lengths-per-lap': 'lengthsPerLap',
-  'stroke-split': 'strokeSplit',
-  'duration-split': 'durationSplit',
+/** Numeric options, and whether each also accepts the string 'auto'. */
+const NUMERIC = {
+  'pool-length': { key: 'poolLength', auto: false },
+  'lengths-per-lap': { key: 'lengthsPerLap', auto: true },
+  'stroke-split': { key: 'strokeSplit', auto: true },
+  'duration-split': { key: 'durationSplit', auto: true },
 };
-for (const [flag, key] of Object.entries(numeric)) {
+const BOOLEAN = { 'keep-stroke': 'reclassifyStroke', 'keep-elapsed': 'normalizeElapsed' };
+
+/*
+ * Reject anything unrecognised. Silently ignoring unknown flags meant
+ * `--pool-length=18` was accepted and discarded, and the output looked
+ * plausible while answering a different question -- the same defect that had
+ * already been fixed in tools/scrub-fixtures.mjs and not here.
+ */
+const KNOWN = new Set([...Object.keys(NUMERIC), ...Object.keys(BOOLEAN), 'dry-run', 'help']);
+const unknown = Object.keys(flags).filter((f) => !KNOWN.has(f));
+if (unknown.length) {
+  console.error(`unknown option(s): ${unknown.map((f) => `--${f}`).join(' ')}`);
+  console.error(USAGE);
+  process.exit(2);
+}
+
+const opts = { ...DEFAULTS };
+for (const [flag, { key, auto }] of Object.entries(NUMERIC)) {
   if (flags[flag] === undefined) continue;
-  if (key === 'lengthsPerLap' && flags[flag] === 'auto') {
+  if (auto && flags[flag] === 'auto') {
     opts[key] = 'auto';
     continue;
   }
   const n = Number(flags[flag]);
   if (!Number.isFinite(n) || n <= 0) {
-    const allowed = key === 'lengthsPerLap' ? 'a positive number or "auto"' : 'a positive number';
-    console.error(`--${flag} needs ${allowed}, got "${flags[flag]}"`);
+    console.error(
+      `--${flag} needs a positive number${auto ? ' or "auto"' : ''}, got "${flags[flag]}"`,
+    );
     process.exit(2);
   }
   opts[key] = n;
 }
-if (flags['keep-stroke']) opts.reclassifyStroke = false;
-if (flags['keep-elapsed']) opts.normalizeElapsed = false;
+for (const [flag, key] of Object.entries(BOOLEAN)) if (flags[flag]) opts[key] = false;
 
 const u8 = new Uint8Array(await readFile(src));
 
