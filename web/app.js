@@ -78,10 +78,17 @@ const FINDINGS = {
     detail: (f) =>
       `${f.note} That would take ${f.lengthsBefore} lengths down to ${f.lengthsAfter}.`,
   },
+  'uncertain-lengths': {
+    icon: '🤔',
+    name: 'Two readings are possible',
+    tone: 'danger',
+    detail: (f) => f.note,
+  },
 };
 
-/** The lap-structure warning belongs at the top; everything else is detail. */
-const findingOrder = (f) => (f.type === 'lap-structure' ? 0 : 1);
+/** Things that make the whole result untrustworthy sort to the top. */
+const TOP = new Set(['lap-structure', 'uncertain-lengths']);
+const findingOrder = (f) => (TOP.has(f.type) ? 0 : 1);
 
 /**
  * Every assumption in DEFAULTS, wired to a control. Keys match DEFAULTS so the
@@ -91,9 +98,12 @@ const findingOrder = (f) => (f.type === 'lap-structure' ? 0 : 1);
  * reported it.
  */
 const CONTROLS = {
+  // `blank: null` means an empty field is a real value -- for the pool size,
+  // "trust the file". `auto` accepts the literal string.
+  poolLength: { kind: 'number', min: 4, max: 100, blank: null },
   lengthsPerLap: { kind: 'number', min: 1, max: 64, auto: true },
-  strokeSplit: { kind: 'number', min: 1, max: 500 },
-  durationSplit: { kind: 'number', min: 1, max: 900 },
+  strokeSplit: { kind: 'number', min: 1, max: 500, auto: true },
+  durationSplit: { kind: 'number', min: 1, max: 900, auto: true },
   reclassifyStroke: { kind: 'checkbox' },
   normalizeElapsed: { kind: 'checkbox' },
 };
@@ -104,7 +114,8 @@ function applyDefaults() {
   for (const [key, spec] of Object.entries(CONTROLS)) {
     const input = controlFor(key);
     if (spec.kind === 'checkbox') input.checked = DEFAULTS[key];
-    else input.value = DEFAULTS[key];
+    // A null default is "unset", which is an empty field, not the text "null".
+    else input.value = DEFAULTS[key] === null ? '' : DEFAULTS[key];
     input.setAttribute('aria-invalid', 'false');
   }
 }
@@ -126,6 +137,11 @@ function readOptions() {
     const text = input.value.trim();
     if (spec.auto && text.toLowerCase() === 'auto') {
       opts[key] = 'auto';
+      input.setAttribute('aria-invalid', 'false');
+      continue;
+    }
+    if ('blank' in spec && text === '') {
+      opts[key] = spec.blank;
       input.setAttribute('aria-invalid', 'false');
       continue;
     }

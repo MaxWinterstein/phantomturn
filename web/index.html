@@ -105,6 +105,22 @@
                 paragraph, re-read on every arrow-key nudge.
               -->
               <div class="option">
+                <label class="option-label" for="poolLength">Pool length in metres</label>
+                <input
+                  type="text"
+                  inputmode="numeric"
+                  id="poolLength"
+                  placeholder="from file"
+                  aria-describedby="poolLengthHelp"
+                />
+                <span class="option-help" id="poolLengthHelp">
+                  Leave blank to trust what the watch recorded. Set it if the watch had the
+                  wrong pool size — that makes every distance wrong by a fixed ratio and
+                  nothing in the data gives it away. Everything else here scales with it.
+                </span>
+              </div>
+
+              <div class="option">
                 <label class="option-label" for="lengthsPerLap">Lengths per lap button press</label>
                 <input
                   type="text"
@@ -125,16 +141,15 @@
                   Breaststroke above … strokes per length
                 </label>
                 <input
-                  type="number"
+                  type="text"
+                  inputmode="numeric"
                   id="strokeSplit"
-                  min="1"
-                  max="500"
-                  step="1"
                   aria-describedby="strokeSplitHelp"
                 />
                 <span class="option-help" id="strokeSplitHelp">
-                  Depends on your stroke length <em>and</em> the pool. Roughly halve it for a
-                  25 m pool.
+                  <strong>auto</strong> scales it from the pool size — 80 strokes per 100 m, so
+                  40 in a 50 m pool and about 14 in an 18 m one. A fixed number only means
+                  anything for one pool size.
                 </span>
               </div>
 
@@ -143,16 +158,15 @@
                   … and above … seconds per length
                 </label>
                 <input
-                  type="number"
+                  type="text"
+                  inputmode="numeric"
                   id="durationSplit"
-                  min="1"
-                  max="900"
-                  step="1"
                   aria-describedby="durationSplitHelp"
                 />
                 <span class="option-help" id="durationSplitHelp">
-                  A cross-check on the stroke count. When the two disagree the lap is reported as
-                  ambiguous and the watch's own label is kept.
+                  A cross-check on the stroke count; <strong>auto</strong> scales it from the pool
+                  too. When the two disagree the lap is reported as ambiguous and the watch's own
+                  label is kept.
                 </span>
               </div>
 
