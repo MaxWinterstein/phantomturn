@@ -202,25 +202,36 @@ const median = (xs) => {
   return s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2;
 };
 
+/** Coefficient of variation -- spread relative to size, so scales compare. */
+function coefficientOfVariation(xs) {
+  if (xs.length < 2) return Number.POSITIVE_INFINITY;
+  const mean = xs.reduce((a, b) => a + b, 0) / xs.length;
+  if (!mean) return Number.POSITIVE_INFINITY;
+  const variance = xs.reduce((a, x) => a + (x - mean) ** 2, 0) / xs.length;
+  return Math.sqrt(variance) / mean;
+}
+
 /**
  * How long one real pool length takes this swimmer, in seconds.
  *
- * Two estimators, and the larger wins. They fail in opposite directions, which
- * is the whole reason for taking a maximum:
+ * There are two things it could be measured from, and the question is which of
+ * them is the repeating unit:
  *
- *   - The median of the LONGER half of the recorded lengths. Phantom turns
- *     produce fragments, and a fragment is always shorter than the length it
- *     came from, so discarding the short half discards them. Useless on a file
- *     where every single length was split -- there is then no intact length
- *     anywhere to learn from, and this reads far too low.
+ *   - the recorded lengths, taking the median of the LONGER half, since a
+ *     phantom-turn fragment is always shorter than the length it came from;
+ *   - the lap totals, which are exactly one length each whenever the swimmer
+ *     pressed the button per length.
  *
- *   - The median lap total. Right whenever the swimmer lapped once per length,
- *     including the all-split case above. Reads too low when some laps hold a
- *     long continuous block, because those laps drag the distribution.
+ * Whichever set is more UNIFORM is the one made of single lengths. That is the
+ * whole rule, and it needs no threshold: if he lapped per length, the lap
+ * totals cluster and the fragments inside them scatter; if he swam continuous
+ * blocks, the lengths cluster and the lap totals scatter wildly.
  *
- * Both err small, never large, so max() is right rather than merely convenient.
- * Taking the larger also absorbs a mixed-stroke session for free: breaststroke
- * lengths run about 140 s against a 96-132 s unit, which still rounds to one.
+ * This replaced `Math.max()` of the two, justified as "both estimators err
+ * small". That held for four files and then failed on two consecutive short-
+ * pool sessions, where most laps held several lengths and so the median lap
+ * total came out at one-and-a-half lengths -- erring large, and merging away a
+ * third of the swim. Uniformity picks the right set on all six.
  */
 function estimateLengthUnit(lapGroups, durationOf) {
   const all = lapGroups.flat();
@@ -228,12 +239,15 @@ function estimateLengthUnit(lapGroups, durationOf) {
 
   const durations = all.map(durationOf).sort((a, b) => a - b);
   const fromLengths = median(durations.slice(Math.floor(durations.length / 2)));
-  const fromLapTotals = median(
-    lapGroups.filter((g) => g.length).map((g) => g.reduce((a, k) => a + durationOf(k), 0)),
-  );
+  const lapTotals = lapGroups
+    .filter((g) => g.length)
+    .map((g) => g.reduce((a, k) => a + durationOf(k), 0));
+  const fromLapTotals = median(lapTotals);
+
+  const lapsAreUniform = coefficientOfVariation(lapTotals) < coefficientOfVariation(durations);
   return {
-    unit: Math.max(fromLengths, fromLapTotals),
-    candidates: { fromLengths, fromLapTotals },
+    unit: lapsAreUniform ? fromLapTotals : fromLengths,
+    candidates: { fromLengths, fromLapTotals, lapsAreUniform },
   };
 }
 
@@ -280,7 +294,7 @@ function resolveLapTargets(lapGroups, durationOf, lengthsPerLap) {
    * session where every single length had been split and no intact one
    * remained. Rather than pick silently, report the disagreement.
    */
-  const other = Math.min(candidates.fromLengths, candidates.fromLapTotals);
+  const other = candidates.lapsAreUniform ? candidates.fromLengths : candidates.fromLapTotals;
   const chosen = impliedTotal(lapGroups, durationOf, unit);
   const alternate = impliedTotal(lapGroups, durationOf, other);
   const alternative =

@@ -22,6 +22,7 @@ export const ORIGINALS = [
   'swim-03.fit',
   'swim-04.fit',
   'swim-05.fit',
+  'swim-06.fit',
 ];
 
 /**
@@ -96,6 +97,15 @@ export const GOLDEN = {
     // an 18 m pool, and how many lengths it really held is still open.
     distanceM: 440,
     lengths: 22,
+  },
+  'swim-06.fit': {
+    golden: 'swim-06_fixed.fit',
+    opts: AS_REFERENCE,
+    // The reference folds all 63 recorded lengths down to 14, one per lap.
+    // Badly wrong about this swim -- but that is its rule, and agreeing with
+    // it byte for byte is the point.
+    distanceM: 252,
+    lengths: 14,
   },
 };
 

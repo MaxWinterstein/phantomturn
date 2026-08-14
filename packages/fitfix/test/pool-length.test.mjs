@@ -81,7 +81,16 @@ test('the two length readings are reported rather than one being picked', async 
 
   const uncertain = info.findings.find((f) => f.type === 'uncertain-lengths');
   assert.ok(uncertain, 'no uncertain-lengths finding');
-  assert.notEqual(uncertain.chosenLengths, uncertain.alternateLengths);
-  assert.ok(uncertain.alternateLengths > uncertain.chosenLengths, 'the alternative keeps more');
+  assert.notEqual(uncertain.chosenLengths, uncertain.alternateLengths, 'both readings the same');
+  assert.ok(uncertain.chosenUnitS > 0 && uncertain.alternateUnitS > 0, 'a unit is missing');
   assert.match(uncertain.note, /does not settle it/);
+
+  // The chosen reading is the one from the more uniform set. Here that is the
+  // recorded lengths, which keeps far more of the swim than the lap totals
+  // would -- the direction that matters, since the alternative deletes real
+  // distance rather than merely leaving phantom turns in.
+  assert.ok(
+    uncertain.chosenLengths > uncertain.alternateLengths,
+    `chose ${uncertain.chosenLengths} over ${uncertain.alternateLengths}`,
+  );
 });

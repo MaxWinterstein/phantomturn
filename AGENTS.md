@@ -154,26 +154,45 @@ assumption is worth a lot.
 | swim-02 | 50 m | occasional splits among clean lengths, mixed freestyle and breaststroke | 18 / 900 m |
 | swim-03 | 50 m | the same, fewer splits | 20 / 1000 m |
 | swim-04 | 50 m | **mixed lapping** — eight laps of one length, then blocks of 11 and 7. No single `lengthsPerLap` describes it | 22 / 1100 m |
-| swim-05 | **18 m**, recorded as 20 m | short pool, **wrong pool size**, and the file that breaks the unit estimator | **still open — see below** |
+| swim-05 | **18 m**, recorded as 20 m | short pool, **wrong pool size**, and the first file to break the unit estimator | **open** — watch 64, time 63.7, strokes 63.8 |
+| swim-06 | 18 m, recorded correctly | short pool where nearly every recorded length is already a real length, so *any* merging is wrong | **open** — watch 63, time 61.4, strokes 64.5 |
 
-### Open question: how long was swim-05?
+### How the length unit is chosen, and why it changed twice
 
-`auto` reports 47 lengths. Total active time ÷ median length and total strokes
-÷ median strokes both independently say **~64**, and the watch recorded 64.
+The unit can be measured from the recorded lengths or from the lap totals, and
+the rule is: **whichever set is more uniform is the one made of single
+lengths.** No threshold, just a comparison of coefficients of variation. If the
+swimmer lapped per length, the lap totals cluster and the fragments inside them
+scatter; if he swam continuous blocks, the lengths cluster and the lap totals
+scatter wildly.
 
-The `max()` in `estimateLengthUnit()` is justified on the grounds that both
-estimators err small. That holds for swim-01 to swim-04 and is **false in
-general**: here the lap-total estimator errs large, because 64 lengths across 22
-laps makes the median lap total one-and-a-half lengths. Using the smaller
-estimator fixes swim-05 and breaks swim-01. Each rule is 4-for-5, failing on a
-different file.
+Two rules were tried and discarded before it:
 
-**Do not retune this against a guess.** The swimmer has not confirmed swim-05's
-count, and fitting a third rule to five points is how two confidently wrong
-answers already got shipped in this project. Until it is confirmed, the
-disagreement is reported as an `uncertain-lengths` finding with both readings,
-and swim-05 is deliberately absent from the `TRUTH` table in
-`auto-lengths.test.mjs`.
+1. **The median recorded length.** Fails whenever fragments outnumber whole
+   lengths.
+2. **`Math.max()` of both candidates**, justified as "both estimators err
+   small". True of swim-01 to swim-04, then false on two consecutive short-pool
+   sessions where most laps held several lengths, so the median lap total came
+   out at one-and-a-half lengths — erring *large*, and merging away a third of
+   the swim. It scored 4-for-6; uniformity picks the right set 6-for-6.
+
+### Open question: how long were swim-05 and swim-06?
+
+Uniformity gets the *set* right on both but the per-lap rounding is still lossy
+when nearly every recorded length is already whole: swim-05 comes out 63 against
+~64, and **swim-06 comes out 54 against ~63**. Rounding `lapTotal / unit`
+systematically loses lengths that are faster than the median.
+
+The likely next step is to stop dividing lap totals and instead classify each
+recorded length as whole-or-fragment, merging only the fragments. That fixes
+both short-pool files by construction — and probably breaks swim-01, where
+almost every recorded length *is* a fragment.
+
+**Do not retune against a guess.** The swimmer has not confirmed either count;
+the figures above are the watch's own plus two independent cross-checks, which
+is strong but not confirmation. Both files are deliberately absent from the
+`TRUTH` table in `auto-lengths.test.mjs`, and the disagreement reaches the user
+as an `uncertain-lengths` finding carrying both readings.
 
 ## Before this repository goes public
 
