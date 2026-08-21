@@ -9,6 +9,8 @@
  *   swim-02  occasional splits among clean lengths, mixed strokes
  *   swim-03  the same, fewer splits
  *   swim-04  mixed lapping -- eight laps of one length, then blocks of 11 and 7
+ *   swim-07  nearly clean -- one true phantom split among thirty single-length
+ *            laps, plus two genuine blocks (3 and 2 lengths) that must survive
  */
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -21,6 +23,7 @@ const TRUTH = {
   'swim-02.fit': { lengths: 18, distanceM: 900 },
   'swim-03.fit': { lengths: 20, distanceM: 1000 },
   'swim-04.fit': { lengths: 22, distanceM: 1100 },
+  'swim-07.fit': { lengths: 17, distanceM: 850 },
 };
 
 for (const [name, want] of Object.entries(TRUTH)) {

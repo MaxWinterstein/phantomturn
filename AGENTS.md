@@ -156,6 +156,7 @@ assumption is worth a lot.
 | swim-04 | 50 m | **mixed lapping** — eight laps of one length, then blocks of 11 and 7. No single `lengthsPerLap` describes it | 22 / 1100 m |
 | swim-05 | **18 m**, recorded as 20 m | short pool, **wrong pool size**, and the first file to break the unit estimator | **open** — watch 64, time 63.7, strokes 63.8 |
 | swim-06 | 18 m, recorded correctly | short pool where nearly every recorded length is already a real length, so *any* merging is wrong | **open** — watch 63, time 61.4, strokes 64.5 |
+| swim-07 | 50 m | nearly clean: one true phantom split among thirty single-length laps, plus two genuine blocks (3 and 2 lengths) from swimming through the turn — laps end at rests, not button presses, so multi-length laps are normal use and a blanket merge destroys real distance | 17 / 850 m |
 
 ### How the length unit is chosen, and why it changed twice
 

@@ -23,6 +23,7 @@ export const ORIGINALS = [
   'swim-04.fit',
   'swim-05.fit',
   'swim-06.fit',
+  'swim-07.fit',
 ];
 
 /**
@@ -105,6 +106,15 @@ export const GOLDEN = {
     // Badly wrong about this swim -- but that is its rule, and agreeing with
     // it byte for byte is the point.
     distanceM: 252,
+    lengths: 14,
+  },
+  'swim-07.fit': {
+    golden: 'swim-07_fixed.fit',
+    opts: AS_REFERENCE,
+    // The reference also folds the two genuine multi-length blocks (laps 17
+    // and 21, ~85 s per length), losing 150 m. Auto keeps them and merges
+    // only the true phantom split, giving the confirmed 850 m.
+    distanceM: 700,
     lengths: 14,
   },
 };
