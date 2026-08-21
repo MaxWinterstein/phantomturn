@@ -86,6 +86,17 @@ tasks:
     cmds:
       - node packages/fitfix/src/cli.mjs {{.CLI_ARGS}}
 
+  pull:
+    desc: 'Fetch the latest pool swim from Garmin Connect and show what the fixer would do'
+    # pull-latest.py prints status to stderr and exactly one line -- the
+    # downloaded path -- to stdout, so the two commands chain cleanly.
+    # Needs a one-time `uv run tools/pull-latest.py --login` first.
+    cmds:
+      - cmd: |
+          set -e
+          f="$(uv run tools/pull-latest.py)"
+          node packages/fitfix/src/cli.mjs "$f" --dry-run
+
   fixtures:check:
     desc: Verify no personal data made it into the test fixtures
     cmds:
