@@ -632,6 +632,16 @@ export function repair(u8, opts = {}) {
     lapNewLens.push(mine);
   });
 
+  /*
+   * Every one of these divides by something that can legitimately be zero -- a
+   * kick set records no strokes, and a file whose lengths are all idle has no
+   * active time at all. patchFrame coerces NaN and +/-Infinity to 0 through
+   * DataView, so an unguarded division writes a confident "0 m/s, 0 m per
+   * stroke" into the file rather than leaving the field invalid. Both the lap
+   * and the session figures below go through it.
+   */
+  const ratio = (numerator, denominator) => (denominator > 0 ? numerator / denominator : 0);
+
   // --- laps
   const lapPatches = lapNewLens.map((mine) => {
     const act = mine.filter((k) => newInfo[k].active);
@@ -644,12 +654,12 @@ export function repair(u8, opts = {}) {
       [F.lap.numActiveLengths]: act.length,
       [F.lap.distance]: distCm,
       [F.lap.cycles]: strokes,
-      [F.lap.avgSpeed]: act.length ? (distCm / 100 / (swimMs / 1000)) * 1000 : 0,
+      [F.lap.avgSpeed]: ratio(distCm / 100, swimMs / 1000) * 1000,
       [F.lap.maxSpeed]: act.length
-        ? Math.max(...act.map((k) => (poolM / (newInfo[k].durMs / 1000)) * 1000))
+        ? Math.max(...act.map((k) => ratio(poolM, newInfo[k].durMs / 1000) * 1000))
         : 0,
-      [F.lap.strokeDistance]: strokes ? distCm / strokes : 0,
-      [F.lap.avgCadence]: act.length ? (strokes * 60) / (swimMs / 1000) : 0,
+      [F.lap.strokeDistance]: ratio(distCm, strokes),
+      [F.lap.avgCadence]: ratio(strokes * 60, swimMs / 1000),
     };
     if (act.length && o.reclassifyStroke) {
       const kinds = new Set(
@@ -666,15 +676,6 @@ export function repair(u8, opts = {}) {
   const strokes = active.reduce((a, n) => a + n.strokes, 0);
   const activeMs = active.reduce((a, n) => a + n.durMs, 0);
 
-  /*
-   * Every one of these divides by something that can legitimately be zero -- a
-   * kick set records no strokes, and a file whose lengths are all idle has no
-   * active time at all. patchFrame coerces NaN and +/-Infinity to 0 through
-   * DataView, so an unguarded division writes a confident "0 m/s, 0 m per
-   * stroke" into the file rather than leaving the field invalid. The lap-level
-   * equivalents below were already guarded; the session ones were not.
-   */
-  const ratio = (numerator, denominator) => (denominator > 0 ? numerator / denominator : 0);
   const sessPatch = {
     [F.session.distance]: distCm,
     [F.session.cycles]: strokes,

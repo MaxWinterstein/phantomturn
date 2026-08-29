@@ -5,7 +5,7 @@
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { checkIntegrity, readFit } from '../src/fit-patch.js';
+import { checkIntegrity, getField, patchFrame, readFit, writeFit } from '../src/fit-patch.js';
 import { analyze, repair } from '../src/swim-repair.js';
 import { firstDiff, ORIGINALS, readFixture } from './fixtures.mjs';
 
@@ -80,4 +80,38 @@ test('analyze reports without modifying anything', async () => {
     info.swimLaps.every((l) => l.durS > 0),
     'a swim lap with no duration',
   );
+});
+
+test('a length with no recorded duration does not crash the repair', async () => {
+  // A length whose total_elapsed_time and total_timer_time are both absent is
+  // rare but legal, and the lap totals then divide by zero. patchFrame refuses
+  // to write the resulting Infinity, so the whole file used to fail to open
+  // with "field 17 in message 19: refusing to write Infinity".
+  const MSG_LENGTH = 101;
+  const LENGTH_TYPE_ACTIVE = 1;
+  const [F_LENGTH_TYPE, F_ELAPSED, F_TIMER] = [12, 3, 4];
+
+  const u8 = await readFixture('swim-03.fit');
+  const { header, frames } = readFit(u8);
+
+  let patched = false;
+  const out = frames.map((f) => {
+    if (
+      !patched &&
+      f.kind === 'data' &&
+      f.globalNum === MSG_LENGTH &&
+      getField(f, F_LENGTH_TYPE) === LENGTH_TYPE_ACTIVE
+    ) {
+      patched = true;
+      return patchFrame(f, { [F_ELAPSED]: null, [F_TIMER]: null });
+    }
+    return f.bytes;
+  });
+  assert.ok(patched, 'fixture should contain at least one active length');
+
+  const doctored = writeFit(header, out);
+  assert.doesNotThrow(() => repair(doctored), 'zero-duration length should not throw');
+
+  const { summary } = repair(doctored);
+  assert.ok(Number.isFinite(summary.distanceM), 'distance stays finite');
 });
