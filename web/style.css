@@ -262,6 +262,68 @@ body.dragging::after {
   text-decoration: underline;
 }
 
+/* --------------------------------------------------------------- chooser */
+/* Shown only when a dropped archive holds more than one activity file. */
+.chooser {
+  margin-top: 1.5rem;
+  padding: 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.chooser-title {
+  margin: 0 0 0.85rem;
+  font-weight: 600;
+}
+
+.chooser-list {
+  margin: 0 0 0.85rem;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  /* A full account export runs to hundreds of activities; without this the
+     page becomes a mile of buttons with the "choose another" escape hatch
+     somewhere off the bottom of it. */
+  max-height: 22rem;
+  overflow-y: auto;
+}
+
+.chooser-pick {
+  width: 100%;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--surface-2);
+  color: inherit;
+  font: inherit;
+  font-size: 0.875rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.chooser-pick:hover {
+  border-color: var(--accent);
+}
+
+.chooser-name {
+  /* Entry names inside a bulk export carry their whole path. */
+  word-break: break-all;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.chooser-size {
+  flex: none;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
 /* ---------------------------------------------------------------- result */
 .result {
   margin-top: 1.5rem;
