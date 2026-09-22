@@ -1,9 +1,16 @@
 :root {
-  --bg: #f7f9fb;
+  /* A touch deeper than #f7f9fb, which left a white card at 1.06:1 against the
+     page -- only the border made a card a card. 1.12:1 is still quiet. */
+  --bg: #eef2f6;
   --surface: #ffffff;
   --surface-2: #f1f5f9;
   --text: #0f172a;
-  --muted: #64748b;
+  /* #64748b measured 4.51:1 on the page background -- AA by a hundredth, so
+     every tinted surface underneath it failed: the lap pill at 4.34:1, the
+     detail line of a danger finding at 4.10:1, the disclaimer at 4.44:1. This
+     clears 4.5:1 on all of them (4.82 page, 5.43 card, 4.95 pill, 4.68 danger
+     tint) instead of relying on the backdrop never being tinted. */
+  --muted: #5b6b82;
   --border: #cbd5e1;
   /* 4.10:1 on white was the root cause of ten AA failures at once -- the CTA,
      every link, the privacy pill and the options badge all derive from it.
@@ -15,6 +22,9 @@
   --ok: #047857;
   --danger: #b91c1c;
   --radius: 14px;
+  /* One step down, for things nested inside something already rounded. The
+     page had five radii (14/11/8/5/4) doing the work of two. */
+  --radius-sm: 10px;
   --shadow: 0 1px 2px rgb(15 23 42 / 6%), 0 8px 24px -12px rgb(15 23 42 / 18%);
 }
 
@@ -133,10 +143,15 @@ h1 {
 .experiment {
   margin: 1.5rem auto 0;
   max-width: 36rem;
-  padding: 0.85rem 1.1rem;
-  border: 1px dashed color-mix(in srgb, var(--accent) 40%, var(--border));
-  border-radius: var(--radius);
-  background: color-mix(in srgb, var(--accent) 5%, var(--surface));
+  padding: 0.85rem 1.1rem 0.85rem 1rem;
+  border: 1px solid var(--border);
+  /* A white notice with an accent bar reads "read this"; the dashed box it
+     replaces read "placeholder", directly above the dropzone, which is also
+     dashed. Two stacked dashed boxes was the single worst thing on the page.
+     This is still the first and boldest block -- that is deliberate. */
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
   text-align: left;
 }
 
@@ -163,13 +178,13 @@ h1 {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.3rem;
-  padding: 3rem 1.5rem;
+  gap: 0.35rem;
+  padding: 2.5rem 1.5rem 2.75rem;
   /* The app's primary control needs a boundary you can actually see:
      WCAG 1.4.11 wants 3:1, and against --border it was 1.17:1. */
   border: 2px dashed var(--muted);
   border-radius: var(--radius);
-  background: var(--surface);
+  background: color-mix(in srgb, var(--accent) 3%, var(--surface));
   cursor: pointer;
   text-align: center;
   transition:
@@ -189,7 +204,9 @@ h1 {
 body.dragging .dropzone {
   border-color: var(--accent);
   background: var(--accent-soft);
-  transform: scale(1.01);
+  /* A ring rather than scale(1.01): scaling nudged everything below it, and a
+     page that shifts while you are dragging onto it is hard to aim at. */
+  box-shadow: 0 0 0 4px var(--accent-soft);
 }
 
 body.dragging::after {
@@ -215,13 +232,19 @@ body.dragging::after {
 }
 
 .dropzone-icon {
-  font-size: 2.25rem;
+  display: grid;
+  place-items: center;
+  width: 3.25rem;
+  height: 3.25rem;
+  margin-bottom: 0.6rem;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  font-size: 1.5rem;
   line-height: 1;
-  margin-bottom: 0.4rem;
 }
 
 .dropzone-title {
-  font-size: 1.075rem;
+  font-size: 1.125rem;
   font-weight: 600;
 }
 
@@ -232,13 +255,10 @@ body.dragging::after {
   font-size: 0.9em;
 }
 
-.dropzone.dragging .dropzone-title code {
-  background: rgb(127 127 127 / 15%);
-}
-
 .dropzone-hint {
+  max-width: 30rem;
   color: var(--muted);
-  font-size: 0.9rem;
+  font-size: 0.875rem;
 }
 
 .sample-line {
@@ -299,7 +319,7 @@ body.dragging::after {
   gap: 1rem;
   padding: 0.6rem 0.8rem;
   border: 1px solid var(--border);
-  border-radius: 11px;
+  border-radius: var(--radius-sm);
   background: var(--surface-2);
   color: inherit;
   font: inherit;
@@ -362,37 +382,47 @@ body.dragging::after {
 /* ----------------------------------------------------------------- stats */
 .stats {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 0.75rem;
+  /* Three across at every width. `auto-fit, minmax(150px, 1fr)` gave 2 + 1 on
+     a phone, and the orphaned third tile then had room for "1000 m 1100 m" to
+     wrap and leave a lone "m" on its own line. */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(0.5rem, 2vw, 0.75rem);
 }
 
 .stat {
-  padding: 1rem 1.1rem;
+  padding: 0.85rem clamp(0.75rem, 2.5vw, 1rem) 0.9rem;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
-  box-shadow: var(--shadow);
+  /* A border or a shadow, not both -- together they read as two outlines. */
+  box-shadow: none;
 }
 
 .stat-label {
-  font-size: 0.775rem;
+  font-size: 0.7rem;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   color: var(--muted);
 }
 
 .stat-value {
-  margin-top: 0.3rem;
-  font-size: 1.5rem;
+  margin-top: 0.35rem;
+  font-size: clamp(1.25rem, 5vw, 1.75rem);
+  line-height: 1.15;
   font-weight: 700;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
 }
 
 .stat-was {
-  margin-left: 0.45rem;
-  font-size: 0.95rem;
+  /* Its own line. Beside the new value it competed with it for the eye, and
+     on a phone it was what pushed the pair over the tile width. */
+  display: block;
+  margin: 0.2rem 0 0;
+  font-size: 0.8rem;
   font-weight: 500;
+  letter-spacing: 0;
   color: var(--muted);
   text-decoration: line-through;
 }
@@ -404,10 +434,11 @@ body.dragging::after {
 /* ----------------------------------------------------------- assumption */
 .assumption {
   margin: 0;
-  padding: 0.85rem 1.1rem;
-  border: 1px solid color-mix(in srgb, var(--warn) 35%, var(--border));
-  border-radius: var(--radius);
-  background: color-mix(in srgb, var(--warn-soft) 45%, var(--surface));
+  padding: 0.85rem 1.1rem 0.85rem 1rem;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--warn);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
   font-size: 0.875rem;
   line-height: 1.55;
 }
@@ -418,8 +449,7 @@ body.dragging::after {
 
 /* auto is not a warning -- it is the tool telling you what it worked out. */
 .assumption-auto {
-  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
-  background: color-mix(in srgb, var(--accent) 6%, var(--surface));
+  border-left-color: var(--accent);
 }
 
 .assumption-auto strong {
@@ -434,11 +464,31 @@ body.dragging::after {
 }
 
 .options summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   padding: 0.75rem 1.1rem;
   cursor: pointer;
   font-size: 0.925rem;
   font-weight: 600;
+  /* Removing the marker took away the only sign this opens, and nothing
+     replaced it -- the panel read as a heading. */
   list-style: none;
+}
+
+.options summary::after {
+  content: "";
+  margin-left: auto;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform 0.15s ease;
+}
+
+.options[open] summary::after {
+  transform: translateY(2px) rotate(-135deg);
 }
 
 .options summary::-webkit-details-marker {
@@ -446,7 +496,7 @@ body.dragging::after {
 }
 
 .options-badge {
-  margin-left: 0.4rem;
+  margin-left: 0;
   padding: 0.05rem 0.45rem;
   border-radius: 999px;
   background: var(--accent-soft);
@@ -542,22 +592,41 @@ body.dragging::after {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  /* One container with dividers, not nine separate outlined cards. At nine
+     findings the old form was nine borders, nine radii and eight gaps of
+     nothing, which read as clutter rather than as a list. */
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow: hidden;
 }
 
 .finding {
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 0.75rem;
-  padding: 0.75rem 1rem;
-  border: 1px solid var(--border);
-  border-radius: 11px;
-  background: var(--surface);
+  align-items: start;
+  padding: 0.7rem 1rem;
+  border: 0;
+  background: transparent;
+}
+
+.finding + .finding {
+  border-top: 1px solid var(--border);
 }
 
 .finding-icon {
-  font-size: 1.05rem;
-  line-height: 1.5;
+  /* A fixed chip. The emoji are different widths in every font, so as bare
+     glyphs they shifted the text column from row to row. */
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 50%;
+  background: var(--surface-2);
+  font-size: 0.95rem;
+  line-height: 1;
 }
 
 .finding-head {
@@ -587,13 +656,13 @@ body.dragging::after {
 }
 
 .finding.warn {
-  border-color: color-mix(in srgb, var(--warn) 35%, var(--border));
+  box-shadow: inset 3px 0 0 var(--warn);
   background: color-mix(in srgb, var(--warn-soft) 45%, var(--surface));
 }
 
 /* The lap-structure warning: the case where the output is simply wrong. */
 .finding.danger {
-  border-color: color-mix(in srgb, var(--danger) 45%, var(--border));
+  box-shadow: inset 3px 0 0 var(--danger);
   background: color-mix(in srgb, var(--danger) 9%, var(--surface));
 }
 
@@ -652,7 +721,7 @@ body.dragging::after {
 .secondary {
   padding: 0.7rem 1.1rem;
   border: 1px solid var(--border);
-  border-radius: 11px;
+  border-radius: var(--radius-sm);
   background: var(--surface-2);
   color: inherit;
   font: inherit;
@@ -677,11 +746,11 @@ body.dragging::after {
 }
 
 .nothing {
-  padding: 1.25rem;
+  padding: 1rem 1.1rem 1rem 1rem;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-left: 3px solid var(--ok);
+  border-radius: var(--radius-sm);
   background: var(--surface);
-  text-align: center;
   color: var(--muted);
 }
 
@@ -755,10 +824,11 @@ body.dragging::after {
 /* ----------------------------------------------------------------- misc */
 .error {
   margin: 1.25rem 0 0;
-  padding: 0.85rem 1.1rem;
-  border: 1px solid color-mix(in srgb, var(--danger) 40%, var(--border));
-  border-radius: var(--radius);
-  background: color-mix(in srgb, var(--danger) 8%, var(--surface));
+  padding: 0.85rem 1.1rem 0.85rem 1rem;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--danger);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
   color: var(--danger);
   font-size: 0.925rem;
 }
