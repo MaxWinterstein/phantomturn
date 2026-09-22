@@ -1,0 +1,83 @@
+# The site tells people to download the anonymized copy and open an issue, and
+# until now nothing on this side asked for it -- or warned against attaching
+# the raw export, which carries a name, a biometric profile and a watch serial.
+# The first field is that warning, before the upload box rather than after it.
+#
+# The lapping question is here because it is the project's central ambiguity:
+# no amount of data distinguishes "many phantom turns" from "a different lap
+# button habit", and the swimmer is the only one who knows. See AGENTS.md.
+name: Wrong numbers
+description: The fixed file does not match what you actually swam
+title: "Wrong numbers: "
+labels: [calibration]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Attach the anonymized copy, not your raw export.**
+
+        The button on the page marked *"Download anonymized copy"* produces it.
+        A raw Garmin export carries your name, your weight and height, your
+        resting heart rate, your watch's serial number and the exact date and
+        time you swam. The anonymized copy keeps only durations, distances and
+        stroke counts, which is everything needed to reproduce the problem.
+
+        This is a public repository. Anything attached here stays public.
+
+  - type: input
+    id: watch
+    attributes:
+      label: Watch
+      description: Model, and the firmware version if you know it.
+      placeholder: Forerunner 265, 21.22
+    validations:
+      required: true
+
+  - type: input
+    id: pool
+    attributes:
+      label: Pool length
+      description: The real length, and what the watch was set to if they differ.
+      placeholder: 18 m, watch set to 20 m
+    validations:
+      required: true
+
+  - type: dropdown
+    id: lapping
+    attributes:
+      label: How do you use the lap button?
+      description: >-
+        The one thing the file cannot reveal. A swim lapped once per length and
+        a swim with many phantom turns look identical in the data.
+      options:
+        - Once per length
+        - Once per interval or set
+        - Not at all, auto-pause does it
+        - It varied during this swim
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: numbers
+    attributes:
+      label: The numbers
+      description: What the watch said, what this tool said, and what you actually swam.
+      value: |
+        - Watch said:
+        - phantomturn said:
+        - Actually swum:
+    validations:
+      required: true
+
+  - type: textarea
+    id: findings
+    attributes:
+      label: Findings the page listed
+      description: Optional. The icons and headings from the findings list.
+
+  - type: textarea
+    id: file
+    attributes:
+      label: Anonymized file
+      description: Drag it in here. GitHub does not accept .fit, so zip it first.
