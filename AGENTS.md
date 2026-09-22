@@ -225,15 +225,17 @@ is strong but not confirmation. Both files are deliberately absent from the
 `TRUTH` table in `auto-lengths.test.mjs`, and the disagreement reaches the user
 as an `uncertain-lengths` finding carrying both readings.
 
-## Before this repository goes public
+## This repository is public
 
-It is private today, and a few things are deliberately parked until it is not:
+It has been since the Pages deploy was turned on, and both items that used to
+be parked here are done: the `workflow_run` trigger in
+`.github/workflows/pages.yml` is live, and `tools/needles.local.json` is
+untracked. What is left is the standing consequence.
 
-1. **Turn on the Pages deploy.** Uncomment the `workflow_run` trigger in
-   `.github/workflows/pages.yml` and set Settings → Pages → Source to
-   "GitHub Actions". Pages needs a public repo on free plans.
-2. **Check `tools/needles.local.json` is still untracked.** It holds a name, a
-   watch serial and sensor ids.
+**Everything you add is published the moment it is pushed**, including the
+parts that do not look like data. A filename is data — see the fourth
+guardrail above. So is a commit message, a test fixture name and an error
+string. There is no staging period in which to notice.
 
 `web/legal.html` carries a name and an email and no postal address — a
 deliberate call for a private, non-commercial page that collects nothing. If
