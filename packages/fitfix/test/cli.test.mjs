@@ -98,19 +98,16 @@ const twoSwims = async () => [
 ];
 
 test('a single-activity zip is repaired, named after the file inside', async () => {
-  const zip = join(dir, 'activity_24366767973.zip');
-  await writeFile(
-    zip,
-    await makeZip([['24366767973_ACTIVITY.fit', await readFixture('swim-02.fit')]]),
-  );
+  const zip = join(dir, 'activity_12345.zip');
+  await writeFile(zip, await makeZip([['12345_ACTIVITY.fit', await readFixture('swim-02.fit')]]));
 
   const { stdout } = await cli([zip]);
-  assert.match(stdout, /read 24366767973_ACTIVITY\.fit/);
+  assert.match(stdout, /read 12345_ACTIVITY\.fit/);
   assert.match(stdout, /900 m, 18 lengths/);
 
   // Next to the archive, named after its contents -- not activity_..._fixed.fit.
-  const written = join(dir, '24366767973_ACTIVITY_fixed.fit');
-  assert.ok((await readFile(written)).length > 0, 'expected 24366767973_ACTIVITY_fixed.fit');
+  const written = join(dir, '12345_ACTIVITY_fixed.fit');
+  assert.ok((await readFile(written)).length > 0, 'expected 12345_ACTIVITY_fixed.fit');
 });
 
 test('--entry picks by position and by name, and names the output after it', async () => {

@@ -17,6 +17,20 @@ repos:
         files: (?i)\.fit$
         pass_filenames: true
 
+      # The same needle scan, pointed at everything that is not a FIT file.
+      # The hook above selects on the extension, which is how a real Garmin
+      # activity id reached three tracked files as a "realistic" test filename
+      # with every check green: `<activityId>_ACTIVITY.fit` resolves to a real
+      # activity, so the name is personal data even where no file is.
+      #
+      # No `files` filter: a needle is a byte sequence, and deciding up front
+      # which paths are "text" is how a check acquires a blind spot.
+      - id: source-privacy
+        name: no known personal strings outside FIT files
+        entry: node tools/scrub-fixtures.mjs --source
+        language: system
+        pass_filenames: true
+
       # The Biome pinned in package.json, called directly rather than through
       # npx: npx would happily download a different version if node_modules is
       # missing, and silent version drift is worse than a clear failure.

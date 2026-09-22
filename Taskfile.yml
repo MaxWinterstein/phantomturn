@@ -67,6 +67,7 @@ tasks:
       - task: lint
       - task: test
       - task: 'fixtures:check'
+      - task: 'source:check'
       - task: build
 
   build:
@@ -101,6 +102,16 @@ tasks:
     desc: Verify no personal data made it into the test fixtures
     cmds:
       - node tools/scrub-fixtures.mjs --check packages/fitfix/test/fixtures/*.fit
+
+  source:check:
+    desc: Verify no known personal string leaked into tracked source or docs
+    # The .fit guardrails all select on the extension, so nothing looked at the
+    # source until a real Garmin activity id reached three tracked files as a
+    # "realistic" test filename and every check still passed. Reads the
+    # "source" list in needles.local.json, which is deliberately not the "fit"
+    # list -- that one holds a name that belongs in LICENSE.
+    cmds:
+      - node tools/scrub-fixtures.mjs --source $(git ls-files)
 
   fixtures:scrub:
     desc: 'Scrub a file in place before it becomes a fixture: task fixtures:scrub -- new.fit'

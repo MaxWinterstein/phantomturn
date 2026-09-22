@@ -18,6 +18,7 @@
 //
 // Usage:  node tools/scrub-fixtures.mjs <file.fit> [...]   (rewrites in place)
 //         node tools/scrub-fixtures.mjs --check <file.fit> [...]
+//         node tools/scrub-fixtures.mjs --source <file> [...]   (text scan only)
 
 import { readFile, writeFile } from 'node:fs/promises';
 import { basename } from 'node:path';
@@ -35,16 +36,24 @@ import { anonymize, audit } from '../packages/fitfix/src/anonymize.js';
  * `tools/needles.local.json` (gitignored) as a JSON array of strings.
  */
 async function loadNeedles() {
+  const strings = (v) => (Array.isArray(v) ? v.filter((n) => typeof n === 'string' && n) : []);
   try {
     const raw = await readFile(new URL('./needles.local.json', import.meta.url), 'utf8');
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((n) => typeof n === 'string' && n) : [];
+    // A bare array is the original format and still means "check these in FIT
+    // files". The source scan gets nothing from it on purpose: those lists were
+    // written for binary payloads and contain the owner's name, which is
+    // *deliberately* in LICENSE, package.json and web/legal.html. Scanning
+    // source for it reports four files every run, and a check that is always
+    // red is one nobody reads.
+    if (Array.isArray(parsed)) return { fit: strings(parsed), source: [] };
+    return { fit: strings(parsed.fit), source: strings(parsed.source) };
   } catch {
-    return []; // absent is the normal case for anyone but the file's owner
+    return { fit: [], source: [] }; // absent is normal for anyone but the owner
   }
 }
 
-const NEEDLES = await loadNeedles();
+const { fit: NEEDLES, source: SOURCE_NEEDLES } = await loadNeedles();
 
 function check(u8) {
   const problems = audit(u8);
@@ -57,6 +66,7 @@ function check(u8) {
 
 const args = process.argv.slice(2);
 const checkOnly = args.includes('--check');
+const sourceOnly = args.includes('--source');
 const files = args.filter((a) => !a.startsWith('--'));
 
 /*
@@ -66,16 +76,55 @@ const files = args.filter((a) => !a.startsWith('--'));
  * and never checked, and a typo like `--checks` fell through to the *default*
  * mode, which rewrites every named file in place.
  */
-const unknown = args.filter((a) => a.startsWith('--') && a !== '--check');
+const unknown = args.filter((a) => a.startsWith('--') && a !== '--check' && a !== '--source');
 if (unknown.length) {
   console.error(`unknown option(s): ${unknown.join(' ')}`);
-  console.error('usage: scrub-fixtures.mjs [--check] <file.fit> [...]');
+  console.error('usage: scrub-fixtures.mjs [--check | --source] <file> [...]');
   process.exit(2);
 }
 
 if (!files.length) {
-  console.error('usage: scrub-fixtures.mjs [--check] <file.fit> [...]');
+  console.error('usage: scrub-fixtures.mjs [--check | --source] <file> [...]');
   process.exit(2);
+}
+
+/*
+ * --source: the needle scan, pointed at everything else in the repository.
+ *
+ * The .fit guardrails all select on the extension, so nothing ever looked at
+ * the source. That gap is not hypothetical -- a real Garmin activity id
+ * reached three tracked files as a "realistic" test filename, and every check
+ * in the project passed. A Garmin export is `<activityId>_ACTIVITY.fit` and
+ * that id resolves to a real activity, so the *name* is personal data even
+ * where no file is; see AGENTS.md.
+ *
+ * It reads the `source` list, not the `fit` one -- see loadNeedles(). Binary
+ * files are decoded as latin1 rather than skipped: a needle is a byte
+ * sequence, and guessing which paths are "text" is how a check acquires a
+ * blind spot. Quiet unless something matches -- this runs over every tracked
+ * file and a per-file "ok" would bury the one line that matters.
+ */
+if (sourceOnly) {
+  const hits = new Set();
+  for (const path of files) {
+    const text = new TextDecoder('latin1').decode(await readFile(path));
+    for (const needle of SOURCE_NEEDLES) {
+      const at = text.indexOf(needle);
+      if (at < 0) continue;
+      hits.add(`${path}:${text.slice(0, at).split('\n').length}`);
+    }
+  }
+  // Never print the needle itself. The first version of this list committed the
+  // serial number it existed to protect; a failure message is just as public.
+  for (const hit of hits) console.log(`FAIL ${hit}: contains a string from the "source" needles`);
+  if (hits.size) {
+    console.log(`\n${hits.size} file(s). The values are in tools/needles.local.json.`);
+  } else if (SOURCE_NEEDLES.length) {
+    console.log(`ok   ${files.length} files, no known personal strings`);
+  } else {
+    console.log('ok   (no "source" needles configured, so nothing to look for)');
+  }
+  process.exit(hits.size ? 1 : 0);
 }
 
 let bad = 0;

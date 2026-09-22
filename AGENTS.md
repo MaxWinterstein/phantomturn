@@ -28,12 +28,19 @@ None of that belongs in a public repository. The fixtures in
    personal strings, over every tracked `.fit` — not just the fixtures
    directory. CI runs it on every push, driven off `git ls-files`.
 3. **The prek hook** runs the same check on any staged `.fit` before commit.
+4. **`task source:check`** scans every *other* tracked file for the `source`
+   needles. The first three all select on the `.fit` extension, and that gap is
+   not hypothetical: a real Garmin activity id reached three tracked files as a
+   "realistic" test filename and every check above stayed green. A Garmin export
+   is `<activityId>_ACTIVITY.fit` and that id resolves to a real activity, so
+   **the name is personal data even where no file is**. Use an obviously fake id
+   in tests — `12345_ACTIVITY.fit`.
 
-None of the three is sufficient alone, and none is a substitute for looking at
+None of the four is sufficient alone, and none is a substitute for looking at
 the file.
 
-**Never commit a `.zip` either.** All three guardrails select on the `.fit`
-extension, and `git ls-files` sees an archive as one opaque blob — a swim inside
+**Never commit a `.zip` either.** The first three guardrails select on the
+`.fit` extension, and `git ls-files` sees an archive as one opaque blob — a swim inside
 one is audited by nothing at all. Now that the tool reads archives, that is a
 live temptation: `unzip.test.mjs` builds every archive it needs at run time
 instead of shipping one, and should stay that way.
@@ -55,11 +62,28 @@ resolves to a real activity on connect.garmin.com — the filename is personal
 data too.
 
 Then put whatever literal strings were in *your* file — your name, the watch
-serial, sensor ids — into `tools/needles.local.json`, a gitignored JSON array.
+serial, sensor ids — into `tools/needles.local.json`, gitignored.
 `scrub-fixtures.mjs` uses them as a text cross-check independent of the
 structural audit. They live in an untracked file because hardcoding them is
 self-defeating: the first version of this list carried the serial number it
 existed to protect, in a repository intended to go public.
+
+It takes two lists, because the two questions are different:
+
+```json
+{
+  "fit": ["Your Name", "3XXXXXXXXX", "sensor-id"],
+  "source": ["1234567890"]
+}
+```
+
+`fit` is checked inside activity files. `source` is checked in **every other
+tracked file**, by `task source:check` and by a prek hook. Keep them separate:
+your name belongs in `fit` and must not go in `source`, because it is
+deliberately in `LICENSE`, `package.json` and `web/legal.html` — putting it
+there turns the check permanently red, and a check that is always red is one
+nobody reads. `source` is for values that must appear nowhere at all: activity
+ids, serials, sensor ids. A bare JSON array still works and is read as `fit`.
 
 The logic lives in `packages/fitfix/src/anonymize.js` — browser-safe, imports
 nothing but `fit-patch.js` — because the same function powers the "Download

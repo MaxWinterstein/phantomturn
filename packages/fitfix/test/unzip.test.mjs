@@ -24,12 +24,12 @@ import { makeZip } from './zip-writer.mjs';
 
 test('a Garmin export round-trips to the exact bytes the watch wrote', async () => {
   const fit = await readFixture('swim-03.fit');
-  const zip = await makeZip([['24366767973_ACTIVITY.fit', fit]]);
+  const zip = await makeZip([['12345_ACTIVITY.fit', fit]]);
 
   assert.ok(isZip(zip), 'the archive should be recognised as one');
   const entries = fitEntries(zip);
   assert.equal(entries.length, 1);
-  assert.equal(entries[0].name, '24366767973_ACTIVITY.fit');
+  assert.equal(entries[0].name, '12345_ACTIVITY.fit');
 
   const out = await readEntry(zip, entries[0]);
   assert.deepEqual(out, fit, 'unzipping must not change a single byte');

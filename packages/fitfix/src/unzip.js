@@ -117,7 +117,7 @@ export function listZip(u8) {
  * Case-insensitive, because the watch writes `GARMIN/ACTIVITY/*.FIT` in
  * uppercase and a zip of a card copied straight off it keeps that. Directory
  * entries are skipped, and so is `__MACOSX/`, where a zip made on a Mac keeps
- * a resource fork per file -- one named `._24366767973_ACTIVITY.fit`, which
+ * a resource fork per file -- one named `._12345_ACTIVITY.fit`, which
  * matches on extension and is not a FIT file.
  */
 export function fitEntries(u8) {
