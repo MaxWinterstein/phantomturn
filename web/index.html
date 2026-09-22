@@ -25,6 +25,28 @@
       name="description"
       content="Fixes phantom turn detection and stroke misclassification in Garmin pool swim FIT files. Runs entirely in your browser."
     />
+    <!--
+      Link previews. Absolute URLs are required: a crawler resolves these
+      without a document base, so a relative path silently yields no image.
+
+      og.png rather than an SVG -- no major crawler renders SVG for a preview
+      card. It is a committed, pre-rendered asset with the typeface baked in,
+      so it does not depend on the fonts of whoever generated it. The CSP above
+      needs no change: it is same-origin, which img-src 'self' already covers.
+    -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="phantomturn — fix Garmin pool swim files" />
+    <meta
+      property="og:description"
+      content="Your watch counted turns that never happened. Fixes phantom turns and stroke misreads in Garmin pool swim FIT files, entirely in your browser."
+    />
+    <meta property="og:url" content="https://maxwinterstein.github.io/phantomturn/" />
+    <meta property="og:image" content="https://maxwinterstein.github.io/phantomturn/og.png" />
+    <meta
+      property="og:image:alt"
+      content="phantomturn — Garmin pool-swim FIT repair, runs in your browser, nothing uploaded"
+    />
+    <meta name="twitter:card" content="summary_large_image" />
     <link
       rel="icon"
       href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌊</text></svg>"
@@ -227,7 +249,9 @@
           </button>
           <p class="share-where">
             Then
-            <a href="https://github.com/MaxWinterstein/phantomturn/issues/new">open an issue</a>
+            <a href="https://github.com/MaxWinterstein/phantomturn/issues/new/choose"
+              >open an issue</a
+            >
             and attach it.
           </p>
         </section>
