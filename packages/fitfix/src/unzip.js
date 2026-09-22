@@ -146,12 +146,49 @@ function crc32(bytes) {
   return (c ^ 0xffffffff) >>> 0;
 }
 
-async function inflateRaw(bytes) {
+/**
+ * Inflates, refusing to hold more than the archive promised it would produce.
+ *
+ * The declared size is the archive's claim, not a fact: a kilobyte of deflate
+ * can expand to gigabytes, and the entry that says otherwise is written by
+ * whoever built the zip. Reading through `new Response(stream).arrayBuffer()`
+ * buffers the whole expansion before any check can run, so the length check in
+ * readEntry would arrive after the memory was already gone.
+ *
+ * Reading chunk by chunk and stopping at the first byte past `limit` bounds it.
+ * readEntry still verifies the exact length and the CRC afterwards -- this only
+ * caps what can be spent getting there.
+ */
+async function inflateRaw(bytes, limit, name) {
   if (typeof DecompressionStream !== 'function') {
     throw new Error('this browser cannot decompress ZIP files -- unpack it yourself');
   }
   const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
-  return new Uint8Array(await new Response(stream).arrayBuffer());
+  const reader = stream.getReader();
+  const chunks = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.length;
+      if (total > limit) {
+        throw new Error(`${name} expands past the ${limit} bytes it declares`);
+      }
+      chunks.push(value);
+    }
+  } finally {
+    // Releases the underlying source whether this returned or threw.
+    await reader.cancel().catch(() => {});
+  }
+
+  const out = new Uint8Array(total);
+  let p = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, p);
+    p += chunk.length;
+  }
+  return out;
 }
 
 /**
@@ -185,7 +222,7 @@ export async function readEntry(u8, entry) {
   if (end > u8.length) throw new Error(`${entry.name} runs past the end of the archive`);
 
   const raw = u8.subarray(start, end);
-  const out = entry.method === STORED ? raw : await inflateRaw(raw);
+  const out = entry.method === STORED ? raw : await inflateRaw(raw, entry.size, entry.name);
 
   if (out.length !== entry.size) {
     throw new Error(`${entry.name} unpacked to ${out.length} bytes, expected ${entry.size}`);
