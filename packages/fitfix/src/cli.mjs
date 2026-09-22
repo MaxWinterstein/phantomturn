@@ -126,11 +126,29 @@ if (isZip(raw)) {
       for (const [i, e] of entries.entries()) console.error(`  ${i + 1}. ${e.name}`);
       process.exit(2);
     }
-    // By position as listed above, or by name -- full path or just the
-    // basename, since the full path inside a bulk export is a mouthful.
-    const byIndex = /^\d+$/.test(want) ? entries[Number(want) - 1] : undefined;
-    chosen =
-      byIndex ?? entries.find((e) => e.name === want || basename(e.name) === want) ?? undefined;
+    /*
+     * By position as listed above, or by name. An exact path always wins; a
+     * bare basename is accepted too, because the full path inside a bulk export
+     * is a mouthful -- but only when it picks out exactly one file.
+     *
+     * `2025/swim.fit` and `2026/swim.fit` are different swims, and taking the
+     * first is the one thing this tool must not do. The browser refuses to
+     * choose between activity files for the same reason.
+     */
+    if (/^\d+$/.test(want)) {
+      chosen = entries[Number(want) - 1];
+    } else {
+      chosen = entries.find((e) => e.name === want);
+      if (!chosen) {
+        const byBase = entries.filter((e) => basename(e.name) === want);
+        if (byBase.length > 1) {
+          console.error(`${basename(src)}: "${want}" matches ${byBase.length} files -- name one:`);
+          for (const e of byBase) console.error(`  ${e.name}`);
+          process.exit(2);
+        }
+        chosen = byBase[0];
+      }
+    }
     if (!chosen) {
       console.error(`${basename(src)}: no entry matching "${want}"`);
       process.exit(2);

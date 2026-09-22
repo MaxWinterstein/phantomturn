@@ -6,11 +6,11 @@
  * invisible to it, which is exactly the hole AGENTS.md spends a page keeping
  * shut. Building the archives at run time costs a small writer and closes it.
  *
- * The writer below is only as trustworthy as its author, so the reader was
- * also checked during development against archives produced by Python's
- * `zipfile` -- deflated, stored, nested, with a Mac resource fork, with an
- * archive comment, and empty. That is the cross-implementation half; this file
- * is the half that runs in CI.
+ * That writer (`zip-writer.mjs`) is only as trustworthy as its author, so the
+ * reader was also checked during development against archives produced by
+ * Python's `zipfile` -- deflated, stored, nested, with a Mac resource fork,
+ * with an archive comment, and empty. That is the cross-implementation half;
+ * this file is the half that runs in CI.
  */
 
 import assert from 'node:assert/strict';
@@ -18,97 +18,7 @@ import test from 'node:test';
 import { analyze } from '../src/swim-repair.js';
 import { fitEntries, isZip, listZip, readEntry } from '../src/unzip.js';
 import { readFixture } from './fixtures.mjs';
-
-// ------------------------------------------------------------- a zip writer
-//
-// Independent of the reader on purpose: its own CRC table, its own field
-// offsets. A shared helper would let one wrong offset agree with itself.
-
-function crc32(bytes) {
-  let c;
-  const table = Uint32Array.from({ length: 256 }, (_, n) => {
-    c = n;
-    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-    return c >>> 0;
-  });
-  let crc = 0xffffffff;
-  for (const b of bytes) crc = table[(crc ^ b) & 0xff] ^ (crc >>> 8);
-  return (crc ^ 0xffffffff) >>> 0;
-}
-
-const deflateRaw = async (bytes) =>
-  new Uint8Array(
-    await new Response(
-      new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw')),
-    ).arrayBuffer(),
-  );
-
-/**
- * Builds an archive from `[name, bytes]` pairs.
- *
- * `stored` writes method 0; the default deflates through the platform, which
- * is what a real producer does and what the reader has to undo.
- */
-async function makeZip(files, { stored = false, comment = '' } = {}) {
-  const parts = [];
-  const central = [];
-  let offset = 0;
-
-  for (const [name, raw] of files) {
-    const nameBytes = new TextEncoder().encode(name);
-    const body = stored ? raw : await deflateRaw(raw);
-    const method = stored ? 0 : 8;
-
-    const local = new Uint8Array(30 + nameBytes.length);
-    const ldv = new DataView(local.buffer);
-    ldv.setUint32(0, 0x04034b50, true);
-    ldv.setUint16(4, 20, true); // version needed
-    ldv.setUint16(8, method, true);
-    ldv.setUint32(14, crc32(raw), true);
-    ldv.setUint32(18, body.length, true);
-    ldv.setUint32(22, raw.length, true);
-    ldv.setUint16(26, nameBytes.length, true);
-    local.set(nameBytes, 30);
-
-    const cd = new Uint8Array(46 + nameBytes.length);
-    const cdv = new DataView(cd.buffer);
-    cdv.setUint32(0, 0x02014b50, true);
-    cdv.setUint16(4, 20, true); // version made by
-    cdv.setUint16(6, 20, true); // version needed
-    cdv.setUint16(10, method, true);
-    cdv.setUint32(16, crc32(raw), true);
-    cdv.setUint32(20, body.length, true);
-    cdv.setUint32(24, raw.length, true);
-    cdv.setUint16(28, nameBytes.length, true);
-    cdv.setUint32(42, offset, true);
-    cd.set(nameBytes, 46);
-
-    parts.push(local, body);
-    central.push(cd);
-    offset += local.length + body.length;
-  }
-
-  const cdBytes = central.reduce((a, c) => a + c.length, 0);
-  const commentBytes = new TextEncoder().encode(comment);
-  const eocd = new Uint8Array(22 + commentBytes.length);
-  const edv = new DataView(eocd.buffer);
-  edv.setUint32(0, 0x06054b50, true);
-  edv.setUint16(8, files.length, true);
-  edv.setUint16(10, files.length, true);
-  edv.setUint32(12, cdBytes, true);
-  edv.setUint32(16, offset, true);
-  edv.setUint16(20, commentBytes.length, true);
-  eocd.set(commentBytes, 22);
-
-  const all = [...parts, ...central, eocd];
-  const out = new Uint8Array(all.reduce((a, p) => a + p.length, 0));
-  let p = 0;
-  for (const chunk of all) {
-    out.set(chunk, p);
-    p += chunk.length;
-  }
-  return out;
-}
+import { makeZip } from './zip-writer.mjs';
 
 // --------------------------------------------------------------------- tests
 
@@ -219,6 +129,27 @@ test('an implausibly large entry is refused before it is unpacked', async () => 
   const zip = await makeZip([['swim.fit', fit]]);
   const [entry] = fitEntries(zip);
   await assert.rejects(() => readEntry(zip, { ...entry, size: 2 ** 30 }), /refused as too large/);
+});
+
+test('an entry that expands past its declared size is cut off, not buffered', async () => {
+  /*
+   * The declaration is the archive's claim, not a fact -- it is the zip that
+   * says how big the entry unpacks to. Checking the length only after the fact
+   * means the memory has already been spent, so a zip declaring a few hundred
+   * bytes and expanding to megabytes has to be stopped while it streams.
+   *
+   * Here the data is a real fixture and the header lies about its size.
+   */
+  const fit = await readFixture('swim-03.fit');
+  const zip = await makeZip([['bomb.fit', fit]], { declaredSize: 512 });
+  const [entry] = fitEntries(zip);
+  assert.equal(entry.size, 512, 'the header should carry the understated size');
+
+  await assert.rejects(
+    () => readEntry(zip, entry),
+    /expands past the 512 bytes it declares/,
+    'must refuse while inflating, not after',
+  );
 });
 
 test('a truncated archive says so instead of throwing something obscure', async () => {
