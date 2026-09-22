@@ -3,9 +3,9 @@
 ### → [maxwinterstein.github.io/phantomturn](https://maxwinterstein.github.io/phantomturn/)
 
 Fixes phantom turn detection and stroke misclassification in Garmin pool swim
-FIT files. **Nothing to install** — open the link, drop your `.fit` file in,
-download the fixed one. It runs entirely in your browser and the file never
-leaves the page.
+FIT files. **Nothing to install** — open the link, drop your `.fit` file in (or
+the `.zip` Garmin Connect gave you, unopened), download the fixed one. It runs
+entirely in your browser and the file never leaves the page.
 
 > [!IMPORTANT]
 > ### 🧪 A living experiment, and 100% vibe coded
@@ -54,6 +54,11 @@ one of seven. No single number describes it — assume one length per lap and
 Drop in a `.fit` file, download the fixed one. Nothing is uploaded anywhere.
 There is a sample swim on the page if you want to try it without your own data.
 
+You can drop the **`.zip` straight from Garmin Connect** too — the one
+"Export Original" downloads — without unpacking it first. If an archive turns
+out to hold several activity files, as a full account export does, the page
+lists them and lets you pick; it will not guess which swim you meant.
+
 The same page will also hand you an **anonymized copy** of whatever you drop
 in. It keeps only the messages a swim analysis actually reads and drops
 everything else — the per-second heart-rate stream, your user profile, sensor
@@ -71,6 +76,8 @@ being the heart-rate stream going away.
 ```sh
 node packages/fitfix/src/cli.mjs swim.fit --dry-run           # report only
 node packages/fitfix/src/cli.mjs swim.fit fixed.fit
+node packages/fitfix/src/cli.mjs activity_123.zip             # the Garmin download, as it comes
+node packages/fitfix/src/cli.mjs export.zip --entry=2         # when the zip holds several
 node packages/fitfix/src/cli.mjs swim.fit --lengths-per-lap=4 # you lap per 200 m
 node packages/fitfix/src/cli.mjs swim.fit --stroke-split=20   # 25 m pool
 node packages/fitfix/src/cli.mjs --help                       # every assumption

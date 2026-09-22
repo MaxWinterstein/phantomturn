@@ -32,6 +32,12 @@ None of that belongs in a public repository. The fixtures in
 None of the three is sufficient alone, and none is a substitute for looking at
 the file.
 
+**Never commit a `.zip` either.** All three guardrails select on the `.fit`
+extension, and `git ls-files` sees an archive as one opaque blob — a swim inside
+one is audited by nothing at all. Now that the tool reads archives, that is a
+live temptation: `unzip.test.mjs` builds every archive it needs at run time
+instead of shipping one, and should stay that way.
+
 ### Adding a new fixture
 
 Scrub **outside** the tree first. `packages/fitfix/test/fixtures/` is the one

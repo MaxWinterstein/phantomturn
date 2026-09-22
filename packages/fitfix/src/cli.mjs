@@ -1,11 +1,17 @@
 #!/usr/bin/env node
 import { readFile, writeFile } from 'node:fs/promises';
-import { basename } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { analyze, DEFAULTS, repair } from './swim-repair.js';
+import { fitEntries, isZip, readEntry } from './unzip.js';
 
-const USAGE = `usage: fitfix <in.fit> [out.fit] [options]
+const USAGE = `usage: fitfix <in.fit|in.zip> [out.fit] [options]
+
+  The input may be the .zip Garmin Connect's "Export Original" hands you;
+  the .fit inside is read straight out of it.
 
   --dry-run                report findings, write nothing
+  --entry=NAME             which .fit to take, when the zip holds several
+                           (a name, or its position in the listing)
 
 Assumptions, calibrated on a Forerunner 265 and scaled to your pool:
 
@@ -39,7 +45,6 @@ const flags = Object.fromEntries(
 );
 const pos = args.filter((a) => !a.startsWith('--'));
 const src = pos[0];
-const dst = pos[1] ?? `${src.replace(/\.fit$/i, '')}_fixed.fit`;
 
 /** Numeric options, and whether each also accepts the string 'auto'. */
 const NUMERIC = {
@@ -56,7 +61,13 @@ const BOOLEAN = { 'keep-stroke': 'reclassifyStroke', 'keep-elapsed': 'normalizeE
  * plausible while answering a different question -- the same defect that had
  * already been fixed in tools/scrub-fixtures.mjs and not here.
  */
-const KNOWN = new Set([...Object.keys(NUMERIC), ...Object.keys(BOOLEAN), 'dry-run', 'help']);
+const KNOWN = new Set([
+  ...Object.keys(NUMERIC),
+  ...Object.keys(BOOLEAN),
+  'dry-run',
+  'entry',
+  'help',
+]);
 const unknown = Object.keys(flags).filter((f) => !KNOWN.has(f));
 if (unknown.length) {
   console.error(`unknown option(s): ${unknown.map((f) => `--${f}`).join(' ')}`);
@@ -82,12 +93,61 @@ for (const [flag, { key, auto }] of Object.entries(NUMERIC)) {
 }
 for (const [flag, key] of Object.entries(BOOLEAN)) if (flags[flag]) opts[key] = false;
 
-const u8 = new Uint8Array(await readFile(src));
+const raw = new Uint8Array(await readFile(src));
+
+/*
+ * A zip is unwrapped here rather than in the library: `repair()` takes bytes
+ * and stays synchronous, and inflating cannot be. Which .fit to take is a
+ * question the caller has to answer anyway, and the answer differs between a
+ * terminal and a browser.
+ *
+ * Naming follows the file that came out, not the archive it came in: the
+ * archive may hold several, and `activity_123_fixed.fit` would then name three
+ * different swims. Only the basename is used, so a nested entry cannot steer
+ * the write anywhere but next to the input.
+ */
+let u8 = raw;
+let label = basename(src);
+
+if (isZip(raw)) {
+  const entries = fitEntries(raw);
+  if (!entries.length) {
+    console.error(`${basename(src)}: no .fit file inside this archive`);
+    process.exit(2);
+  }
+
+  let chosen = entries[0];
+  if (entries.length > 1) {
+    const want = flags.entry;
+    if (want === undefined || want === true) {
+      console.error(
+        `${basename(src)} holds ${entries.length} .fit files -- pick one with --entry:`,
+      );
+      for (const [i, e] of entries.entries()) console.error(`  ${i + 1}. ${e.name}`);
+      process.exit(2);
+    }
+    // By position as listed above, or by name -- full path or just the
+    // basename, since the full path inside a bulk export is a mouthful.
+    const byIndex = /^\d+$/.test(want) ? entries[Number(want) - 1] : undefined;
+    chosen =
+      byIndex ?? entries.find((e) => e.name === want || basename(e.name) === want) ?? undefined;
+    if (!chosen) {
+      console.error(`${basename(src)}: no entry matching "${want}"`);
+      process.exit(2);
+    }
+  }
+
+  u8 = await readEntry(raw, chosen);
+  label = basename(chosen.name);
+  console.log(`${basename(src)}: read ${chosen.name} (${u8.length} bytes)`);
+}
+
+const dst = pos[1] ?? join(dirname(src), `${label.replace(/\.fit$/i, '')}_fixed.fit`);
 
 if (flags['dry-run']) {
   const info = analyze(u8, opts);
   console.log(
-    `${basename(src)}: ${info.laps} laps, ${info.lengths} lengths, ` +
+    `${label}: ${info.laps} laps, ${info.lengths} lengths, ` +
       `pool ${info.poolM} m, timer ${(info.timerMs / 60000).toFixed(1)} min`,
   );
   for (const f of info.findings) console.log('  -', f.type, JSON.stringify(f));

@@ -62,10 +62,13 @@
           in would have been the sample button.
         -->
         <label class="dropzone" id="dropzone">
-          <input class="visually-hidden" type="file" id="picker" accept=".fit,application/octet-stream" />
+          <input class="visually-hidden" type="file" id="picker" accept=".fit,.zip,application/zip,application/octet-stream" />
           <span class="dropzone-icon" aria-hidden="true">📄</span>
-          <span class="dropzone-title">Drop your <code>.fit</code> file here</span>
-          <span class="dropzone-hint">or click to choose one</span>
+          <span class="dropzone-title">Drop your <code>.fit</code> or <code>.zip</code> here</span>
+          <span class="dropzone-hint">
+            or click to choose one — the <code>.zip</code> from “Export Original”
+            works as it comes, no unpacking
+          </span>
         </label>
 
         <p class="sample-line">
@@ -76,6 +79,18 @@
         <p class="busy" id="busy" role="status" hidden>⏳ Working through the file…</p>
 
         <p class="error" id="error" role="alert" hidden></p>
+
+        <!--
+          Shown only when an archive holds more than one .fit. Picking the first
+          silently is fine for an "Export Original" download, which holds
+          exactly one, and wrong for a full account export, which holds every
+          swim you have ever recorded.
+        -->
+        <section class="chooser" id="chooser" aria-live="polite" hidden>
+          <p class="chooser-title" id="chooserTitle"></p>
+          <ul class="chooser-list" id="chooserList"></ul>
+          <button class="reset" id="chooserReset" type="button">Choose another file</button>
+        </section>
 
         <section class="result" id="result" aria-live="polite" hidden>
           <div class="result-head">

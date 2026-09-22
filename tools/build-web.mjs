@@ -15,7 +15,7 @@ const root = new URL('../', import.meta.url);
 const dist = new URL('dist/', root);
 
 /** Browser-facing library files. cli.mjs is Node-only and stays out. */
-const LIB = ['fit-patch.js', 'swim-repair.js', 'anonymize.js'];
+const LIB = ['fit-patch.js', 'swim-repair.js', 'anonymize.js', 'unzip.js'];
 
 /**
  * Sample file offered on the page. This is a scrubbed test fixture -- it has

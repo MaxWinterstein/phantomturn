@@ -4,6 +4,7 @@
  */
 import { anonymize } from './lib/anonymize.js';
 import { DEFAULTS, repair } from './lib/swim-repair.js';
+import { fitEntries, isZip, readEntry } from './lib/unzip.js';
 
 const el = (id) => document.getElementById(id);
 
@@ -23,6 +24,9 @@ const share = el('share');
 const removedList = el('removed');
 const anonymizeBtn = el('anonymize');
 const busy = el('busy');
+const chooser = el('chooser');
+const chooserTitle = el('chooserTitle');
+const chooserList = el('chooserList');
 
 /** Loaded file, the most recent repair output, and the anonymized copy. */
 const state = { name: null, input: null, output: null, anonymized: null };
@@ -30,12 +34,15 @@ const state = { name: null, input: null, output: null, anonymized: null };
 /**
  * Escapes text destined for innerHTML.
  *
- * Nothing currently interpolated is attacker-controlled -- the values are
- * numbers, or keys from frozen tables -- but only because getField() happens to
- * return a byte rather than text for FIT string fields. That is an accident of
- * another module, undocumented, and one `getStringField()` helper away from
- * turning every template below into a stored-XSS sink fed by an uploaded file.
- * Escaping at the sink costs nothing and does not depend on remembering.
+ * The archive chooser interpolates entry names, which come out of an uploaded
+ * zip and are therefore fully attacker-controlled: a file named
+ * `<img src=x onerror=...>.fit` is a legal zip entry. That is the only such
+ * value today. Everything else is a number or a key from a frozen table, and
+ * only because getField() happens to return a byte rather than text for FIT
+ * string fields -- an accident of another module, undocumented, and one
+ * `getStringField()` helper away from turning every template below into a
+ * stored-XSS sink fed by an uploaded file. Escaping at the sink costs nothing
+ * and does not depend on remembering.
  */
 const esc = (v) =>
   String(v).replace(
@@ -275,6 +282,7 @@ function runRepair() {
 function showError(message) {
   state.output = null;
   result.hidden = true;
+  chooser.hidden = true;
   dropzone.hidden = false;
   sampleLine.hidden = false;
   errorBox.hidden = false;
@@ -332,6 +340,19 @@ function loadBytes(name, label, bytes) {
   });
 }
 
+/**
+ * Refused before the file is read into memory.
+ *
+ * A pool swim is tens of kilobytes, but "the zip Garmin gave me" is now a
+ * thing people will drop here, and a full account export runs to hundreds of
+ * megabytes. Reading one in through arrayBuffer() kills the tab with no
+ * message at all, which looks exactly like the page being broken.
+ */
+const MAX_UPLOAD_BYTES = 512 * 1024 * 1024;
+
+/** The last path component, for naming the download after the file inside. */
+const stem = (path) => path.split('/').pop();
+
 async function loadFile(files) {
   const list = files ? [...files] : [];
   if (!list.length) {
@@ -339,16 +360,89 @@ async function loadFile(files) {
     return;
   }
   const [file, ...rest] = list;
+  if (file.size > MAX_UPLOAD_BYTES) {
+    showError(`${file.name} is ${Math.round(file.size / 1e6)} MB, which is too big to open here`);
+    return;
+  }
+  const extra = rest.length ? ` (${rest.length} more ignored)` : '';
+  let bytes;
   try {
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    loadBytes(
-      file.name,
-      rest.length ? `${file.name} (${rest.length} more ignored)` : file.name,
-      bytes,
-    );
+    bytes = new Uint8Array(await file.arrayBuffer());
   } catch {
     showError('the file could not be opened — a folder, perhaps?');
+    return;
   }
+  if (isZip(bytes)) {
+    await loadArchive(file.name, bytes, extra);
+    return;
+  }
+  loadBytes(file.name, `${file.name}${extra}`, bytes);
+}
+
+/**
+ * Opens the .fit inside a zip -- what "Export Original" on Garmin Connect
+ * downloads, and what most people have in hand.
+ *
+ * One .fit is opened straight away; several are offered as a list, because the
+ * one-per-archive case is an activity export and the many-per-archive case is
+ * a full account export, where guessing means silently repairing a swim from
+ * some other year.
+ */
+async function loadArchive(zipName, bytes, extra) {
+  let entries;
+  try {
+    entries = fitEntries(bytes);
+  } catch (err) {
+    showError(err.message);
+    return;
+  }
+
+  if (!entries.length) {
+    showError(`there is no .fit file inside ${zipName}`);
+    return;
+  }
+  if (entries.length === 1) {
+    await openEntry(zipName, bytes, entries[0], extra);
+    return;
+  }
+
+  chooserTitle.textContent = `${zipName} holds ${entries.length} activity files. Which one?`;
+  chooserList.innerHTML = entries
+    .map(
+      (e, i) =>
+        `<li><button class="chooser-pick" type="button" data-index="${i}">
+           <span class="chooser-name">${esc(e.name)}</span>
+           <span class="chooser-size">${Math.max(1, Math.round(e.size / 1024))} kB</span>
+         </button></li>`,
+    )
+    .join('');
+  // The bytes have to outlive this function -- the pick happens whenever the
+  // reader gets round to it.
+  chooserList.onclick = (event) => {
+    const button = event.target.closest('.chooser-pick');
+    if (button) openEntry(zipName, bytes, entries[Number(button.dataset.index)], extra);
+  };
+
+  errorBox.hidden = true;
+  result.hidden = true;
+  dropzone.hidden = true;
+  sampleLine.hidden = true;
+  chooser.hidden = false;
+}
+
+async function openEntry(zipName, zipBytes, entry, extra = '') {
+  chooser.hidden = true;
+  let fit;
+  try {
+    fit = await readEntry(zipBytes, entry);
+  } catch (err) {
+    showError(err.message);
+    return;
+  }
+  // Named after the file that came out, not the archive it came in: an archive
+  // may hold several, and naming all their outputs after it would collide.
+  const name = stem(entry.name);
+  loadBytes(name, `${name} — from ${zipName}${extra}`, fit);
 }
 
 /** An anonymized real session, so the tool can be tried without your own data. */
@@ -393,10 +487,12 @@ function reset() {
   statsEl.innerHTML = '';
   findingsEl.innerHTML = '';
   removedList.innerHTML = '';
+  chooserList.innerHTML = '';
   result.hidden = true;
   errorBox.hidden = true;
   share.hidden = true;
   busy.hidden = true;
+  chooser.hidden = true;
   dropzone.hidden = false;
   sampleLine.hidden = false;
 }
@@ -459,6 +555,7 @@ anonymizeBtn.addEventListener('click', () => {
   if (state.anonymized) save(state.anonymized.bytes, '_anonymized');
 });
 resetBtn.addEventListener('click', reset);
+el('chooserReset').addEventListener('click', reset);
 el('sample').addEventListener('click', loadSample);
 
 applyDefaults();
