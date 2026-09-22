@@ -221,7 +221,14 @@ packages/fitfix/     the library -- extractable to its own npm package one day
 web/                 the static site, no build step
 tools/               scrub, build, serve -- all zero-dependency
 reference/           the Python implementation the golden files came from
+.vibepod/            the sandbox image: gh, task, uv, prek, chromium
 ```
+
+None of those is in the agent's base image, and the container has no `sudo`, so
+installing one by hand lasts until the pod restarts. `prek` is the one to care
+about: `task setup` only warns when it is missing, and what goes missing with it
+is the hook that refuses to commit an unscrubbed `.fit`. See
+`.vibepod/README.md`.
 
 `fit-patch.js` is deliberately free of swimming logic. Keep it that way — it is
 the part that could be published on its own.

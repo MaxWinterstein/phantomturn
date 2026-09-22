@@ -1,0 +1,21 @@
+# Tooling for the VibePod sandbox, pinned. See ../README.md.
+#
+# Every entry here is something AGENTS.md or the Taskfile already tells you to
+# run; none of it is in the base agent image. Versions are exact on purpose --
+# a floating tool version is a build that succeeds today and fails on a
+# colleague's machine tomorrow, for reasons nothing in this repository records.
+registries:
+  - type: standard
+    ref: v4.565.0
+
+packages:
+  # gh -- reading and merging pull requests from inside the pod.
+  - name: cli/cli@v2.101.0
+  # task -- `task check`, `task fix`, and everything else in Taskfile.yml.
+  - name: go-task/task@v3.53.1
+  # uv -- `task pull` runs tools/pull-latest.py through it.
+  - name: astral-sh/uv@0.12.17
+  # prek -- installs the git hook that stops an unscrubbed .fit being committed.
+  #   `task setup` warns loudly and carries on when this is missing, which is
+  #   exactly the case where the warning is easiest to scroll past.
+  - name: j178/prek@v0.5.3
