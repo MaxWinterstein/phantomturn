@@ -1,4 +1,9 @@
-# 🌊 phantomturn
+![phantomturn — fixes phantom turns in Garmin pool-swim FIT files, in your browser](.github/banner.svg)
+
+[![CI](https://github.com/MaxWinterstein/phantomturn/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/MaxWinterstein/phantomturn/actions/workflows/ci.yml)
+[![site](https://img.shields.io/github/deployments/MaxWinterstein/phantomturn/github-pages?label=site)](https://maxwinterstein.github.io/phantomturn/)
+[![runtime dependencies: 0](https://img.shields.io/badge/runtime%20dependencies-0-047857)](#why-it-patches-bytes-instead-of-decoding)
+[![licence: MIT](https://img.shields.io/github/license/MaxWinterstein/phantomturn?label=licence)](LICENSE)
 
 ### → [maxwinterstein.github.io/phantomturn](https://maxwinterstein.github.io/phantomturn/)
 
@@ -31,7 +36,7 @@ length. The length gets split in two, and you are credited with distance you
 never swam. The same laps usually come back with the wrong stroke, because the
 watch switches stroke at the turn it imagined. Two symptoms, one cause.
 
-Three real sessions, all Forerunner 265 in a 50 m pool:
+Six real sessions, all Forerunner 265, in a 50 m pool unless noted:
 
 | Watch said        | Actually swum   | What went wrong                       |
 | ----------------- | --------------- | ------------------------------------- |
@@ -153,18 +158,20 @@ scrubbing step that is not optional.
 - **Lengths per lap is inferred from the file**, per lap, by measuring each lap
   against how long one length takes you in that swim. That handles a session
   you lapped inconsistently, which no single number can. It is still a
-  heuristic tuned on four files — check the before/after numbers, and put a
+  heuristic tuned on seven files — check the before/after numbers, and put a
   number in if you disagree.
 - **It only ever merges, never splits.** If the watch *missed* a turn and
   recorded two lengths as one, nothing here will recover it.
-- The freestyle/breaststroke split is **40 strokes per length**, calibrated in a
-  50 m pool. A 25 m pool would need roughly half that. It should be derived from
-  the session instead of hard-coded.
+- The freestyle/breaststroke split defaults to `auto`, which scales it from the
+  pool length — 40 strokes per length at 50 m, proportionally fewer in a short
+  pool. The constant behind it was still fitted on one swimmer, so a fixed
+  `--stroke-split` is there if your stroke count runs differently.
 - Freestyle and breaststroke only. No backstroke, butterfly, IM or drill — a
   watch that labels a length backstroke gets it silently reclassified as one of
   the two the classifier does know.
 - Multisport files are rejected. The guard is implemented but untested.
-- Tested against a Forerunner 265, 50 m pool, four sessions from one swimmer.
+- Tested against a Forerunner 265 only: seven sessions from one swimmer, in a
+  50 m and an 18 m pool.
 
 ## Licence
 
