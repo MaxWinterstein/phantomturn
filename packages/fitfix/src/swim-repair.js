@@ -242,7 +242,7 @@ const SECONDS_PER_100M = 200;
  * length) and breaststroke runs to 1.47x; "rounds to two", at 1.5x, would
  * flag both short-pool files. swim-08's missed turn is 1.92x the unit with
  * 1.9x the median stroke count. 1.75 sits between -- on one positive
- * example, which is why this only ever reports and never splits.
+ * example, which is why it only reports unless the swimmer asks for a split.
  */
 const MISSED_TURN_RATIO = 1.75;
 
@@ -365,8 +365,21 @@ function resolveLapTargets(lapGroups, durationOf, lengthsPerLap) {
  */
 export function analyze(u8, opts = {}) {
   const o = { ...DEFAULTS, ...opts };
-  const { bytes, invented, applied } = applySplits(u8, o);
-  return analyzeFile(bytes, o, invented, applied);
+  return prepare(u8, o).info;
+}
+
+/**
+ * The split pre-pass and the analysis of its result, in one place.
+ *
+ * analyze() and repair() each used to call the two in sequence, and the copies
+ * drifted: repair() stopped passing the recorded-index map, so the page -- which
+ * goes through repair() -- counted made-up lengths as recorded while every test,
+ * which went through analyze(), passed. One helper, so there is no second copy
+ * to fall behind.
+ */
+function prepare(u8, o) {
+  const { bytes, invented, applied, origin } = applySplits(u8, o);
+  return { src: bytes, info: analyzeFile(bytes, o, invented, applied, origin) };
 }
 
 /**
@@ -387,12 +400,13 @@ export function analyze(u8, opts = {}) {
  * surviving length, as it already does after a merge.
  */
 function applySplits(u8, o) {
-  const none = { bytes: u8, invented: new Set(), applied: [] };
+  const none = { bytes: u8, invented: new Set(), applied: [], origin: null };
   if (!o.splitMissedTurns) return none;
 
   // Detection runs on the file as recorded: the lengths to split are the ones
   // the swimmer was shown.
-  const found = analyzeFile(u8, o).findings.filter((f) => f.type === 'missed-turn');
+  const base = analyzeFile(u8, o);
+  const found = base.findings.filter((f) => f.type === 'missed-turn');
   const wanted = o.splitMissedTurns === true ? null : new Set(o.splitMissedTurns);
   const chosen = found.filter((f) => wanted === null || wanted.has(f.key));
   if (!chosen.length) return none;
@@ -401,18 +415,22 @@ function applySplits(u8, o) {
   const { header, frames } = readFit(u8);
   const out = [];
   const invented = new Set();
+  // origin[i]: the index, in the file as recorded, of length i of the split
+  // file. Everything that reports what the *watch* did counts through it, so a
+  // made-up length is never mistaken for a recorded one.
+  const origin = [];
   let index = 0;
+  let recordedIndex = -1;
   for (const fr of frames) {
     if (fr.kind !== 'data' || fr.globalNum !== MSG.length) {
       out.push(fr.bytes);
       continue;
     }
-    const f =
-      getField(fr, F.length.lengthType) === LENGTH_TYPE.active
-        ? byKey.get(getField(fr, F.length.startTime))
-        : undefined;
+    recordedIndex++;
+    const f = byKey.get(recordedIndex);
     if (!f) {
       out.push(fr.bytes);
+      origin.push(recordedIndex);
       index++;
       continue;
     }
@@ -435,6 +453,7 @@ function applySplits(u8, o) {
         }),
       );
       invented.add(index++);
+      origin.push(recordedIndex);
       usedMs += partMs;
       usedStrokes += partStrokes;
     }
@@ -444,13 +463,27 @@ function applySplits(u8, o) {
     invented,
     // Carried into the analysis of the split file, which no longer contains
     // the long length -- without it, the finding and its switch would vanish
-    // the moment the switch was turned on.
-    applied: chosen.map((f) => ({ ...f, split: true })),
+    // the moment the switch was turned on. `baseTarget` is what the lap came
+    // to without the split, so the analysis can say what the split changed.
+    applied: chosen.map((f) => ({
+      ...f,
+      split: true,
+      baseTarget: base.swimLaps.find((l) => l.lap === f.lap)?.target ?? 0,
+      note:
+        'one recorded length ran as long as two, in both time and strokes, and was ' +
+        'split on request: the turn is put halfway and the strokes divided with ' +
+        'the time. The lengths it makes are made up, not recorded.',
+    })),
+    origin,
   };
 }
 
-function analyzeFile(u8, o, invented = new Set(), applied = []) {
+function analyzeFile(u8, o, invented = new Set(), applied = [], origin = null) {
   const { frames } = readFit(u8);
+  /** A length's index in the file as the watch recorded it. */
+  const recordedIndexOf = (k) => (origin ? origin[k] : k);
+  /** Recorded lengths among these split-file indices: made-up parts count once. */
+  const recordedCount = (ks) => new Set(ks.map(recordedIndexOf)).size;
   const lengths = frames.filter((f) => f.kind === 'data' && f.globalNum === MSG.length);
   const laps = frames.filter((f) => f.kind === 'data' && f.globalNum === MSG.lap);
   const session = frames.find((f) => f.kind === 'data' && f.globalNum === MSG.session);
@@ -599,6 +632,8 @@ function analyzeFile(u8, o, invented = new Set(), applied = []) {
     swimLaps.push({
       lap: li,
       lengths: act.length,
+      /** What the watch recorded: `lengths` less any made up by a split. */
+      recorded: recordedCount(act),
       /** What the repair will leave in this lap -- never more than `lengths`. */
       target: groups.length,
       durS: durMs / 1000,
@@ -633,8 +668,14 @@ function analyzeFile(u8, o, invented = new Set(), applied = []) {
       findings.push({
         type: 'missed-turn',
         lap: li,
-        /** Stable across re-analysis of the same file: the length's start, in seconds. */
-        key: getField(lengths[k], F.length.startTime),
+        /*
+         * The length's index in the file as recorded: unique, and stable across
+         * re-analysis -- including of a file where another missed turn has
+         * already been split, which shifts every later index of the split file.
+         * (The start time was the first choice and is not unique: two lengths
+         * can share a second.)
+         */
+        key: recordedIndexOf(k),
         split: false,
         durS,
         strokes: getField(lengths[k], F.length.strokes),
@@ -647,15 +688,17 @@ function analyzeFile(u8, o, invented = new Set(), applied = []) {
       });
     }
 
-    if (act.length > target)
+    // A merge that only folds a split back together is not a phantom turn the
+    // watch made -- the missed-turn finding reports that it undid the split.
+    if (recordedCount(act) > groups.length)
       findings.push({
         type: 'phantom-turn',
         lap: li,
-        detected: act.length,
+        detected: recordedCount(act),
         assumed: target,
         durS: durMs / 1000,
         strokes,
-        note: `lap split into ${act.length} lengths`,
+        note: `lap split into ${recordedCount(act)} lengths`,
       });
 
     /*
@@ -677,7 +720,12 @@ function analyzeFile(u8, o, invented = new Set(), applied = []) {
       );
 
       const ambiguous = byStrokes !== byTime;
-      const holdsMissedTurn = group.some((k) => missed.has(k));
+      // A made-up length merged with anything is as unreliable as the missed
+      // turn it came from: under a fixed target the halves fold back together
+      // and the doubled stroke count reads as breaststroke again.
+      const holdsMissedTurn =
+        group.some((k) => missed.has(k)) ||
+        (group.length > 1 && group.some((k) => invented.has(k)));
       const keep = o.keepStrokeWhenUnsure && (ambiguous || holdsMissedTurn);
       strokeWrite.set(group[0], keep ? null : gStroke);
 
@@ -718,8 +766,20 @@ function analyzeFile(u8, o, invented = new Set(), applied = []) {
    * The data alone cannot tell the two apart, so this reports rather than
    * decides -- but it has to be impossible to miss.
    */
+  /*
+   * What each requested split actually added. A fixed lengths-per-lap can fold
+   * the made-up lengths straight back together, and the swimmer who ticked
+   * "I remember turning here" has to be told that the file did not change,
+   * rather than read "now split into 2" beside a distance that did not move.
+   */
+  for (const f of findings) {
+    if (f.type !== 'missed-turn' || !f.split) continue;
+    const lap = swimLaps.find((l) => l.lap === f.lap);
+    f.gained = Math.max(0, (lap?.target ?? 0) - f.baseTarget);
+  }
+
   if (swimLaps.length) {
-    const lengthsBefore = swimLaps.reduce((a, l) => a + l.lengths, 0);
+    const lengthsBefore = swimLaps.reduce((a, l) => a + l.recorded, 0);
     const lengthsAfter = swimLaps.reduce((a, l) => a + Math.min(l.lengths, lapTargets[l.lap]), 0);
     const split = swimLaps.filter((l) => l.lengths > lapTargets[l.lap]);
     const maxPerLap = Math.max(...swimLaps.map((l) => l.lengths));
@@ -791,7 +851,10 @@ function analyzeFile(u8, o, invented = new Set(), applied = []) {
     elapsedMs,
     pauses,
     laps: laps.length,
-    lengths: lengths.length,
+    // As recorded: the made-up lengths are not something the watch counted.
+    lengths: lengths.length - (invented.size - new Set([...invented].map(recordedIndexOf)).size),
+    /** Lengths in the output that a split made up rather than the watch recorded. */
+    madeUpLengths: invented.size - new Set([...invented].map(recordedIndexOf)).size,
     swimLaps,
     findings,
     // Handed to repair() rather than recomputed there. The two copies of this
@@ -817,8 +880,7 @@ function analyzeFile(u8, o, invented = new Set(), applied = []) {
 export function repair(u8, opts = {}) {
   const o = { ...DEFAULTS, ...opts };
   // The same pre-pass analyze() does, so both work on the same file.
-  const { bytes: src, invented, applied } = applySplits(u8, o);
-  const info = analyzeFile(src, o, invented, applied);
+  const { src, info } = prepare(u8, o);
   const { poolM, recordedPoolM, strokeSplit, timerMs, pauses, lapLengths } = info;
   const { header, frames } = readFit(src);
   const lengths = frames.filter((f) => f.kind === 'data' && f.globalNum === MSG.length);

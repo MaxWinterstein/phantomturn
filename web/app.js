@@ -94,15 +94,20 @@ const FINDINGS = {
     name: 'Possible missed turn',
     tone: 'danger',
     detail: (f) =>
-      f.split
-        ? `One recorded length took ${fmtSeconds(f.durS)} with ${f.strokes} strokes, and is ` +
-          `now split into ${f.looksLike} lengths of about ${fmtSeconds(f.durS / f.looksLike)} ` +
-          'each. Those lengths are made up, not recorded: the turn is put halfway and the ' +
-          'strokes are divided with the time. Untick to put it back as the watch recorded it.'
-        : `One recorded length took ${fmtSeconds(f.durS)} with ${f.strokes} strokes — about ` +
-          `${f.looksLike} lengths' worth, where one reads as ${fmtSeconds(f.unitS)}. The watch ` +
-          `probably missed a turn, so the distance is likely ${f.looksLike - 1} length` +
-          `${f.looksLike - 1 === 1 ? '' : 's'} short. Its stroke is left as the watch said.`,
+      f.split && f.gained === 0
+        ? `One recorded length took ${fmtSeconds(f.durS)} with ${f.strokes} strokes. It is ` +
+          'split as you asked, but lengths per lap is set to a fixed number under ' +
+          'Assumptions, which merges the parts straight back together — so the distance ' +
+          'is unchanged by it. Set lengths per lap to auto for the split to count.'
+        : f.split
+          ? `One recorded length took ${fmtSeconds(f.durS)} with ${f.strokes} strokes, and is ` +
+            `now split into ${f.looksLike} lengths of about ${fmtSeconds(f.durS / f.looksLike)} ` +
+            'each. Those lengths are made up, not recorded: the turn is put halfway and the ' +
+            'strokes are divided with the time. Untick to put it back as the watch recorded it.'
+          : `One recorded length took ${fmtSeconds(f.durS)} with ${f.strokes} strokes — about ` +
+            `${f.looksLike} lengths' worth, where one reads as ${fmtSeconds(f.unitS)}. The watch ` +
+            `probably missed a turn, so the distance is likely ${f.looksLike - 1} length` +
+            `${f.looksLike - 1 === 1 ? '' : 's'} short. Its stroke is left as the watch said.`,
     /*
      * Opt-in, one length at a time, because a split invents data and only the
      * swimmer knows whether there was a turn there. The value is the finding's
@@ -252,10 +257,7 @@ function render() {
   // What the watch recorded -- so the lengths a split made up come back out.
   // Counted from the split file they are not "before" anything, and the old
   // figure showed 1200 m for a swim the watch had recorded as 1150.
-  const madeUp = info.findings
-    .filter((f) => f.type === 'missed-turn' && f.split)
-    .reduce((a, f) => a + f.looksLike - 1, 0);
-  const lengthsBefore = info.swimLaps.reduce((a, l) => a + l.lengths, 0) - madeUp;
+  const lengthsBefore = info.swimLaps.reduce((a, l) => a + l.recorded, 0);
   const distanceBefore = lengthsBefore * info.poolM;
 
   statsEl.innerHTML = [
@@ -366,8 +368,8 @@ function renderWorking(info) {
       return `
         <tr class="${isMerged ? 'is-merged' : ''}${missed ? ' is-missed' : ''}">
           <td class="num">${esc(l.lap + 1)}</td>
-          <td class="num">${esc(l.lengths)}</td>
-          <td class="num">${isMerged ? '<span aria-hidden="true">→ </span>' : ''}${esc(l.target)}</td>
+          <td class="num">${esc(l.recorded)}</td>
+          <td class="num">${l.target !== l.recorded ? '<span aria-hidden="true">→ </span>' : ''}${esc(l.target)}</td>
           <td class="seen">${seen}${isMerged ? ' <span class="working-tag">merged</span>' : ''}${missed ? ' <span class="working-tag working-tag-missed">possible missed turn</span>' : ''}${wasSplit ? ' <span class="working-tag working-tag-split">split — made up, not recorded</span>' : ''}</td>
         </tr>`;
     })
@@ -682,6 +684,9 @@ for (const key of Object.keys(CONTROLS)) {
 
 el('resetOptions').addEventListener('click', () => {
   applyDefaults();
+  // The default is no split. A switch that invents data does not survive a
+  // "reset to defaults".
+  state.splits = new Set();
   if (state.input) runRepair();
   else renderOptionState(readOptions());
 });
