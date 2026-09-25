@@ -30,7 +30,14 @@ Assumptions, calibrated on a Forerunner 265 and scaled to your pool:
   --duration-split=N|auto  seconds per length, cross-checks --stroke-split
                            (default ${DEFAULTS.durationSplit}, scaled the same way)
   --keep-stroke            leave the watch's stroke classification alone
-  --keep-elapsed           leave total elapsed time as recorded`;
+  --keep-elapsed           leave total elapsed time as recorded
+
+  --split-missed-turns[=LAPS]
+                           split lengths that look like two the watch
+                           recorded as one -- all of them, or only those in
+                           the listed laps (e.g. =12,20). Off by default: it
+                           invents where the turn fell, so use it for a turn
+                           you actually remember.`;
 
 const args = process.argv.slice(2);
 if (!args.length || args.includes('--help') || args.includes('-h')) {
@@ -67,6 +74,7 @@ const KNOWN = new Set([
   'dry-run',
   'entry',
   'help',
+  'split-missed-turns',
 ]);
 const unknown = Object.keys(flags).filter((f) => !KNOWN.has(f));
 if (unknown.length) {
@@ -92,6 +100,22 @@ for (const [flag, { key, auto }] of Object.entries(NUMERIC)) {
   opts[key] = n;
 }
 for (const [flag, key] of Object.entries(BOOLEAN)) if (flags[flag]) opts[key] = false;
+
+/*
+ * Laps are what a swimmer can name from the table, so that is what the flag
+ * takes; the library wants finding keys, which are resolved once the file is
+ * read. Validated here, like every other flag, rather than silently ignored.
+ */
+let splitLaps = null;
+if (flags['split-missed-turns'] !== undefined) {
+  const v = flags['split-missed-turns'];
+  if (v === true) splitLaps = true;
+  else if (/^\d+(,\d+)*$/.test(v)) splitLaps = new Set(v.split(',').map(Number));
+  else {
+    console.error(`--split-missed-turns takes lap numbers like =12,20, got "${v}"`);
+    process.exit(2);
+  }
+}
 
 const raw = new Uint8Array(await readFile(src));
 
@@ -162,6 +186,19 @@ if (isZip(raw)) {
 
 const dst = pos[1] ?? join(dirname(src), `${label.replace(/\.fit$/i, '')}_fixed.fit`);
 
+if (splitLaps === true) opts.splitMissedTurns = true;
+else if (splitLaps) {
+  const found = analyze(u8, { ...opts, splitMissedTurns: false }).findings.filter(
+    (f) => f.type === 'missed-turn',
+  );
+  const unknown = [...splitLaps].filter((n) => !found.some((f) => f.lap + 1 === n));
+  if (unknown.length) {
+    console.error(`--split-missed-turns: no possible missed turn in lap ${unknown.join(', ')}`);
+    process.exit(2);
+  }
+  opts.splitMissedTurns = found.filter((f) => splitLaps.has(f.lap + 1)).map((f) => f.key);
+}
+
 if (flags['dry-run']) {
   const info = analyze(u8, opts);
   console.log(
@@ -200,11 +237,13 @@ function printWorking(info) {
   for (const l of info.swimLaps) {
     const merged = l.lengths > l.target;
     const seen = l.lengthsS
-      .map((s, i) => (s === null ? '?' : `${Math.round(s)}${l.missedTurns[i] ? '!' : ''}`))
+      .map((s, i) =>
+        s === null ? '?' : `${Math.round(s)}${l.missedTurns[i] ? '!' : ''}${l.split[i] ? '*' : ''}`,
+      )
       .join(' + ');
     const missed = l.missedTurns.some(Boolean);
     console.log(
-      `    ${String(l.lap + 1).padStart(3)}  ${String(l.lengths).padStart(5)} -> ${String(l.target).padEnd(5)}  ${seen}${merged ? '   merged' : ''}${missed ? '   possible missed turn' : ''}`,
+      `    ${String(l.lap + 1).padStart(3)}  ${String(l.lengths).padStart(5)} -> ${String(l.target).padEnd(5)}  ${seen}${merged ? '   merged' : ''}${missed ? '   possible missed turn' : ''}${l.split.some(Boolean) ? '   split (* made up)' : ''}`,
     );
   }
 }
@@ -228,13 +267,22 @@ if (opts.lengthsPerLap === 'auto' && info.lengthUnitS) {
  */
 for (const f of info.findings.filter((f) => f.type === 'missed-turn')) {
   console.warn('');
+  if (f.split) {
+    console.warn(
+      `  !!  lap ${f.lap + 1}: split a ${Math.round(f.durS)} s length into ${f.looksLike}, as asked.`,
+    );
+    console.warn('  !!  The turn is put halfway -- those lengths are made up, not recorded.');
+    continue;
+  }
   console.warn(
     `  !!  lap ${f.lap + 1}: possible missed turn -- one length took ${Math.round(f.durS)} s`,
   );
   console.warn(
     `  !!  with ${f.strokes} strokes, about ${f.looksLike} lengths' worth (one is ~${Math.round(f.unitS)} s).`,
   );
-  console.warn(`  !!  The distance is probably ${f.looksLike - 1} length(s) short. Not fixed.`);
+  console.warn(
+    `  !!  The distance is probably ${f.looksLike - 1} length(s) short. --split-missed-turns=${f.lap + 1} splits it.`,
+  );
 }
 
 // Loud, before anything else: this is the case where the output is garbage.
