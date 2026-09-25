@@ -144,9 +144,18 @@ export function mergeToTarget(indices, target, durationOf) {
    * real swim anyway.
    */
   if (size > 256) {
-    const chunk = Math.ceil(size / n);
+    // Exactly n groups, sizes differing by at most one. The first version cut
+    // fixed chunks of ceil(size / n), which yields *fewer* than n: 257 lengths
+    // at a target of 64 came out as 52 groups, while every caller -- the
+    // findings, the lap-structure guard and "Show the working" -- reported 64.
+    const base = Math.floor(size / n);
+    const extra = size % n;
     const groups = [];
-    for (let i = 0; i < size; i += chunk) groups.push(indices.slice(i, i + chunk));
+    for (let g = 0, i = 0; g < n; g++) {
+      const len = base + (g < extra ? 1 : 0);
+      groups.push(indices.slice(i, i + len));
+      i += len;
+    }
     return groups;
   }
 
@@ -406,6 +415,12 @@ export function analyze(u8, opts = {}) {
   lapActive.forEach((act, li) => {
     const target = lapTargets[li];
     if (!act.length) return;
+    // The groups repair() will produce for this lap, computed once and used
+    // for both the stroke classification below and the reported target. The
+    // target used to be min(recorded, lapTargets[li]) -- a second answer to
+    // the same question, and it did disagree with the merge (see the size
+    // fallback in mergeToTarget). Counting the groups cannot.
+    const groups = mergeToTarget(act, target, (k) => getField(lengths[k], F.length.elapsed));
     const durMs = act.reduce((a, k) => a + getField(lengths[k], F.length.elapsed), 0);
     const strokes = act.reduce((a, k) => a + (getField(lengths[k], F.length.strokes) ?? 0), 0);
     const stroke = strokes >= strokeSplit ? 'breaststroke' : 'freestyle';
@@ -415,10 +430,28 @@ export function analyze(u8, opts = {}) {
     swimLaps.push({
       lap: li,
       lengths: act.length,
+      /** What the repair will leave in this lap -- never more than `lengths`. */
+      target: groups.length,
       durS: durMs / 1000,
       strokes,
       stroke,
       deviceStroke,
+      /*
+       * Each recorded length on its own, in order. The lap totals above cannot
+       * tell "47 s + 44 s" (one length the watch split in two) from "81 s +
+       * 84 s" (two real lengths) -- and that difference is the whole question
+       * a swimmer is asking when a repaired distance looks wrong. Exposed so a
+       * front end can show the evidence rather than only the verdict.
+       */
+      // null where the watch recorded no duration, rather than durationOf's 0:
+      // a length that was never timed must not read as a zero-second one.
+      lengthsS: act.map((k) => {
+        const ms = getField(lengths[k], F.length.elapsed);
+        return ms === null ? null : ms / 1000;
+      }),
+      // null where no stroke count was recorded, as lengthsS does for a missing
+      // duration; the lap total above keeps treating it as 0.
+      lengthStrokes: act.map((k) => getField(lengths[k], F.length.strokes)),
     });
 
     if (act.length > target)
@@ -440,7 +473,7 @@ export function analyze(u8, opts = {}) {
      * as "breaststroke, 61 strokes" and then written as freestyle for both
      * lengths. Reporting one thing and doing another is worse than either.
      */
-    for (const group of mergeToTarget(act, target, (k) => getField(lengths[k], F.length.elapsed))) {
+    for (const group of groups) {
       const gDurMs = group.reduce((a, k) => a + getField(lengths[k], F.length.elapsed), 0);
       const gStrokes = group.reduce((a, k) => a + (getField(lengths[k], F.length.strokes) ?? 0), 0);
       const byStrokes = gStrokes >= strokeSplit;
@@ -567,6 +600,13 @@ export function analyze(u8, opts = {}) {
     lapTargets,
     /** Seconds one real length takes, when it was inferred rather than given. */
     lengthUnitS: unit,
+    /**
+     * Whether lengths per lap was left to be worked out. Not the same as
+     * `lengthUnitS` being set: 'auto' with no usable durations infers no unit
+     * and falls back to one length per lap, and a front end that took a null
+     * unit to mean "fixed" told the swimmer they had set a number they had not.
+     */
+    autoLengths: o.lengthsPerLap === 'auto',
   };
 }
 

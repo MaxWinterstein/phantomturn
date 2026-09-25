@@ -232,6 +232,49 @@
 
           <div class="findings" id="findings"></div>
 
+          <!--
+            The evidence behind the distance above. Collapsed, because for most
+            swims the numbers are fine and a twenty-row table under them is
+            noise; one click away for the swim where they are not, since the
+            per-lap totals cannot tell "47 s + 44 s" (one length split in two)
+            from "81 s + 84 s" (two real ones) and this can.
+          -->
+          <details class="options working" id="working" hidden>
+            <summary>
+              🔍 Show the working
+              <span class="options-badge" id="workingBadge"></span>
+            </summary>
+            <div class="working-body">
+              <p class="working-unit" id="workingUnit"></p>
+              <table class="working-table" aria-describedby="workingUnit">
+                <thead>
+                  <tr>
+                    <th scope="col">Lap</th>
+                    <!-- Bare numbers under a header that says what they count:
+                         "1 length" in every cell wrapped to two lines on a
+                         phone and doubled the height of every row. -->
+                    <th scope="col">Watch <span class="visually-hidden">lengths</span></th>
+                    <th scope="col">Fixed <span class="visually-hidden">lengths</span></th>
+                    <th scope="col">The lengths it saw</th>
+                  </tr>
+                </thead>
+                <tbody id="workingRows"></tbody>
+              </table>
+              <p class="working-note">
+                Rest laps hold no lengths and are left out, so lap numbers skip
+                where you stopped. Nothing is ever split, so a lap can only lose
+                lengths — and if the target is wrong for how you actually lapped,
+                the ones it loses are real. This table is where that shows.
+                <!-- The data cannot tell a phantom turn from a different lapping
+                     habit (AGENTS.md, the lap-structure finding). The first
+                     wording said a lap "only ever loses lengths it counted
+                     twice", which is false under a wrong fixed target and was
+                     exactly the reassurance this panel exists to let a swimmer
+                     check rather than take. -->
+              </p>
+            </div>
+          </details>
+
           <button class="download" id="download" type="button">⬇️ Download fixed file</button>
         </section>
 

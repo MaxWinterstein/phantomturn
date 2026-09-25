@@ -27,6 +27,10 @@ const busy = el('busy');
 const chooser = el('chooser');
 const chooserTitle = el('chooserTitle');
 const chooserList = el('chooserList');
+const working = el('working');
+const workingBadge = el('workingBadge');
+const workingUnit = el('workingUnit');
+const workingRows = el('workingRows');
 
 /** Loaded file, the most recent repair output, and the anonymized copy. */
 const state = { name: null, input: null, output: null, anonymized: null };
@@ -231,6 +235,10 @@ function render() {
     statCard({ label: 'Swim time', value: fmtSeconds(summary.swimS) }),
   ].join('');
 
+  // Before the findings, which return early when there are none -- and a swim
+  // with nothing wrong in it is still one whose working someone may want to see.
+  renderWorking(info);
+
   const findings = info.findings;
   if (!findings.length) {
     findingsEl.innerHTML = '<p class="nothing">✅ Nothing looks wrong in this file.</p>';
@@ -259,6 +267,68 @@ function render() {
   findingsEl.innerHTML = `
     <p class="findings-title">${n} finding${n === 1 ? '' : 's'}</p>
     <ul>${rows}</ul>`;
+}
+
+/**
+ * The per-lap breakdown under "Show the working": what the watch recorded,
+ * what the repair leaves, and every recorded length on its own.
+ *
+ * Everything here comes from analyze(), and the lap targets are the ones
+ * repair() is handed rather than recomputed, so the table cannot promise a
+ * distance the file does not get -- working.test.mjs holds the two to the same
+ * total. The open/closed state is left alone across re-renders: changing an
+ * assumption re-runs the repair, and snapping the panel shut each time would
+ * hide the very rows the change was meant to affect.
+ */
+function renderWorking(info) {
+  const laps = info.swimLaps;
+  working.hidden = !laps.length;
+  if (!laps.length) return;
+
+  const merged = laps.filter((l) => l.lengths > l.target).length;
+  workingBadge.textContent = merged
+    ? `${merged} lap${merged === 1 ? '' : 's'} merged`
+    : `${laps.length} laps, none merged`;
+
+  if (info.lengthUnitS) {
+    workingUnit.textContent =
+      `One length in this swim reads as about ${Math.round(info.lengthUnitS)} seconds. ` +
+      'Two short lengths that add up to about one look like a turn the watch imagined, ' +
+      'and are merged; lengths that are each about one look real, and are kept. That is ' +
+      'the rule, not proof — check it against what you remember swimming.';
+  } else if (info.autoLengths) {
+    workingUnit.textContent =
+      'This file has no usable length durations to measure a length against, so ' +
+      'each lap is treated as a single length. If that is wrong, set a number under ' +
+      'Assumptions.';
+  } else {
+    workingUnit.textContent =
+      'Lengths per lap is set to a fixed number under Assumptions, so each lap is ' +
+      'cut to that many rather than measured.';
+  }
+
+  workingRows.innerHTML = laps
+    .map((l) => {
+      const isMerged = l.lengths > l.target;
+      // Each duration unbreakable, so a narrow screen wraps at the "+" and never
+      // strands the unit: "95" on one line and "s" on the next was the result.
+      const seen = l.lengthsS
+        .map((s) =>
+          // A length the watch never timed is "—", not a confident "0 s".
+          s === null
+            ? '<span class="dur" title="no duration recorded">—</span>'
+            : `<span class="dur">${esc(Math.round(s))} s</span>`,
+        )
+        .join(' + ');
+      return `
+        <tr class="${isMerged ? 'is-merged' : ''}">
+          <td class="num">${esc(l.lap + 1)}</td>
+          <td class="num">${esc(l.lengths)}</td>
+          <td class="num">${isMerged ? '<span aria-hidden="true">→ </span>' : ''}${esc(l.target)}</td>
+          <td class="seen">${seen}${isMerged ? ' <span class="working-tag">merged</span>' : ''}</td>
+        </tr>`;
+    })
+    .join('');
 }
 
 function runRepair() {
@@ -331,6 +401,8 @@ function withBusy(work) {
 }
 
 function loadBytes(name, label, bytes) {
+  // A new swim starts closed. Only re-runs of the same file keep it open.
+  working.open = false;
   state.name = name;
   filenameEl.textContent = label;
   state.input = bytes;
@@ -488,6 +560,10 @@ function reset() {
   findingsEl.innerHTML = '';
   removedList.innerHTML = '';
   chooserList.innerHTML = '';
+  workingRows.innerHTML = '';
+  // Closed again for the next file: its working is a different swim's.
+  working.open = false;
+  working.hidden = true;
   result.hidden = true;
   errorBox.hidden = true;
   share.hidden = true;

@@ -169,7 +169,41 @@ if (flags['dry-run']) {
       `pool ${info.poolM} m, timer ${(info.timerMs / 60000).toFixed(1)} min`,
   );
   for (const f of info.findings) console.log('  -', f.type, JSON.stringify(f));
+  printWorking(info);
   process.exit(0);
+}
+
+/**
+ * The per-lap breakdown: what the watch recorded, what the repair will leave,
+ * and each recorded length on its own.
+ *
+ * The findings say *that* a lap was merged; this says why it was believable.
+ * "47 + 44" against a one-length reference of ~81 s is visibly one length the
+ * watch split in two, and "81 + 84 + 95" is visibly three real ones -- the
+ * totals alone cannot tell those apart, and that is the question someone is
+ * asking when a repaired distance looks wrong. Mirrors "Show the working" in
+ * the browser.
+ */
+function printWorking(info) {
+  if (!info.swimLaps.length) return;
+  console.log('');
+  console.log(
+    info.lengthUnitS
+      ? `  working -- one length reads as ~${Math.round(info.lengthUnitS)} s`
+      : info.autoLengths
+        ? '  working -- auto, but no usable durations: each lap taken as one length'
+        : '  working -- lengths per lap was fixed, not inferred',
+  );
+  // Lap numbers skip wherever the swimmer rested: a rest lap holds no lengths,
+  // so it has nothing to show. Said here so the gaps do not read as a bug.
+  console.log('    lap  watch    fixed  the lengths it saw (s)       rest laps not shown');
+  for (const l of info.swimLaps) {
+    const merged = l.lengths > l.target;
+    const seen = l.lengthsS.map((s) => (s === null ? '?' : Math.round(s))).join(' + ');
+    console.log(
+      `    ${String(l.lap + 1).padStart(3)}  ${String(l.lengths).padStart(5)} -> ${String(l.target).padEnd(5)}  ${seen}${merged ? '   merged' : ''}`,
+    );
+  }
 }
 
 const { bytes, summary, info } = repair(u8, opts);
