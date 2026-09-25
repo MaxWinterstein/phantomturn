@@ -636,6 +636,16 @@ body.dragging::after {
   color: var(--danger);
 }
 
+/* A length the tool made up by splitting a missed turn. Italic and labelled
+   in words: it must never pass for something the watch recorded. */
+.working-table .dur-split {
+  font-style: italic;
+}
+
+.working-tag.working-tag-split {
+  color: var(--accent);
+}
+
 .working-tag {
   margin-left: 0.35rem;
   font-size: 0.75rem;
@@ -1018,4 +1028,23 @@ footer {
 .dot {
   margin: 0 0.4rem;
   opacity: 0.5;
+}
+
+/* The opt-in switch on a missed-turn finding. */
+.finding-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-top: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.finding-control input {
+  width: 1.05rem;
+  height: 1.05rem;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
 }

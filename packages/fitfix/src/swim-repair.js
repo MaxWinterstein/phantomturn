@@ -107,6 +107,21 @@ export const DEFAULTS = {
    * this off.
    */
   keepStrokeWhenUnsure: true,
+  /**
+   * Split lengths that look like missed turns back into the lengths they were.
+   *
+   * `false` (the default) splits nothing: the file stays as short as the watch
+   * made it, and the missed-turn finding says by how much. `true` splits every
+   * one found. An array splits only those whose finding `key` it lists -- how
+   * the page lets a swimmer confirm them one at a time.
+   *
+   * Off by default because it invents data. A merge only discards: every
+   * number it writes is still one the watch measured. A split has to make up
+   * where the turn fell (halfway) and how the strokes divide (with the time),
+   * so the worst it can do is add distance nobody swam -- on a threshold that
+   * rests on a single real example. The swimmer is the only one who knows.
+   */
+  splitMissedTurns: false,
   /** Set elapsed time to timer time when the timer was never paused. */
   normalizeElapsed: true,
 };
@@ -350,6 +365,91 @@ function resolveLapTargets(lapGroups, durationOf, lengthsPerLap) {
  */
 export function analyze(u8, opts = {}) {
   const o = { ...DEFAULTS, ...opts };
+  const { bytes, invented, applied } = applySplits(u8, o);
+  return analyzeFile(bytes, o, invented, applied);
+}
+
+/**
+ * Splits the chosen missed-turn lengths into equal parts and returns the new
+ * file, before any analysis or repair sees it.
+ *
+ * A pre-pass rather than a step inside repair(): everything downstream -- lap
+ * assignment, lap targets, the stroke decisions, the working table and the
+ * guarantee that it adds up to what is written -- then runs unchanged on a file
+ * that simply has the right number of lengths in it. `invented` lists the
+ * resulting lengths by index, so the front ends can say which ones were made up.
+ *
+ * Each part is a copy of the original frame, placed immediately after it, so
+ * the definition in force is the same one. Durations and strokes divide
+ * equally, the remainder going to the last part so the totals are exact, and
+ * each part starts where the one before ended, in the whole seconds FIT uses.
+ * repair() then rewrites the derived fields (speed, cadence, index) of every
+ * surviving length, as it already does after a merge.
+ */
+function applySplits(u8, o) {
+  const none = { bytes: u8, invented: new Set(), applied: [] };
+  if (!o.splitMissedTurns) return none;
+
+  // Detection runs on the file as recorded: the lengths to split are the ones
+  // the swimmer was shown.
+  const found = analyzeFile(u8, o).findings.filter((f) => f.type === 'missed-turn');
+  const wanted = o.splitMissedTurns === true ? null : new Set(o.splitMissedTurns);
+  const chosen = found.filter((f) => wanted === null || wanted.has(f.key));
+  if (!chosen.length) return none;
+
+  const byKey = new Map(chosen.map((f) => [f.key, f]));
+  const { header, frames } = readFit(u8);
+  const out = [];
+  const invented = new Set();
+  let index = 0;
+  for (const fr of frames) {
+    if (fr.kind !== 'data' || fr.globalNum !== MSG.length) {
+      out.push(fr.bytes);
+      continue;
+    }
+    const f =
+      getField(fr, F.length.lengthType) === LENGTH_TYPE.active
+        ? byKey.get(getField(fr, F.length.startTime))
+        : undefined;
+    if (!f) {
+      out.push(fr.bytes);
+      index++;
+      continue;
+    }
+    const parts = f.looksLike;
+    const ms = getField(fr, F.length.elapsed);
+    const strokes = getField(fr, F.length.strokes) ?? 0;
+    const start = getField(fr, F.length.startTime);
+    let usedMs = 0;
+    let usedStrokes = 0;
+    for (let i = 0; i < parts; i++) {
+      const last = i === parts - 1;
+      const partMs = last ? ms - usedMs : Math.round(ms / parts);
+      const partStrokes = last ? strokes - usedStrokes : Math.round(strokes / parts);
+      out.push(
+        patchFrame(fr, {
+          [F.length.startTime]: start + Math.round(usedMs / 1000),
+          [F.length.elapsed]: partMs,
+          [F.length.timer]: partMs,
+          [F.length.strokes]: partStrokes,
+        }),
+      );
+      invented.add(index++);
+      usedMs += partMs;
+      usedStrokes += partStrokes;
+    }
+  }
+  return {
+    bytes: writeFit(header, out),
+    invented,
+    // Carried into the analysis of the split file, which no longer contains
+    // the long length -- without it, the finding and its switch would vanish
+    // the moment the switch was turned on.
+    applied: chosen.map((f) => ({ ...f, split: true })),
+  };
+}
+
+function analyzeFile(u8, o, invented = new Set(), applied = []) {
   const { frames } = readFit(u8);
   const lengths = frames.filter((f) => f.kind === 'data' && f.globalNum === MSG.length);
   const laps = frames.filter((f) => f.kind === 'data' && f.globalNum === MSG.lap);
@@ -476,7 +576,10 @@ export function analyze(u8, opts = {}) {
    */
   const strokeWrite = new Map();
 
-  const findings = [];
+  // Splits already applied keep their finding, marked split, so the switch
+  // that turned them on is still there to turn them off. Lap indices carry
+  // over unchanged: splitting adds lengths, never laps.
+  const findings = [...applied];
   const swimLaps = [];
   lapActive.forEach((act, li) => {
     const target = lapTargets[li];
@@ -520,6 +623,8 @@ export function analyze(u8, opts = {}) {
       lengthStrokes: act.map((k) => getField(lengths[k], F.length.strokes)),
       /** Per recorded length: does it look like two lengths recorded as one? */
       missedTurns: act.map((k) => missed.has(k)),
+      /** Per length: made up by splitting a missed turn, not recorded by the watch. */
+      split: act.map((k) => invented.has(k)),
     });
 
     for (const k of act) {
@@ -528,6 +633,9 @@ export function analyze(u8, opts = {}) {
       findings.push({
         type: 'missed-turn',
         lap: li,
+        /** Stable across re-analysis of the same file: the length's start, in seconds. */
+        key: getField(lengths[k], F.length.startTime),
+        split: false,
         durS,
         strokes: getField(lengths[k], F.length.strokes),
         looksLike: Math.round(durS / refUnit),
@@ -708,9 +816,11 @@ export function analyze(u8, opts = {}) {
 /** Applies the repair and returns the new file. */
 export function repair(u8, opts = {}) {
   const o = { ...DEFAULTS, ...opts };
-  const info = analyze(u8, o);
+  // The same pre-pass analyze() does, so both work on the same file.
+  const { bytes: src, invented, applied } = applySplits(u8, o);
+  const info = analyzeFile(src, o, invented, applied);
   const { poolM, recordedPoolM, strokeSplit, timerMs, pauses, lapLengths } = info;
-  const { header, frames } = readFit(u8);
+  const { header, frames } = readFit(src);
   const lengths = frames.filter((f) => f.kind === 'data' && f.globalNum === MSG.length);
 
   // lapLengths comes from analyze() rather than being recomputed. The frames
