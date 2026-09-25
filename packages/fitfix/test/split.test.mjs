@@ -139,3 +139,126 @@ test('split: commutes with anonymizing, like the rest of the repair', async () =
     repair(anonymize(u8).bytes, opts).bytes,
   );
 });
+
+// --- from review: the split file is not what the watch recorded -----------
+
+/** swim-08 with its frames passed through `edit` (a frame -> patch map, or undefined). */
+async function doctored(edit) {
+  const { patchFrame, writeFit } = await import('../src/fit-patch.js');
+  const { header, frames } = readFit(await readFixture('swim-08.fit'));
+  const act = frames.filter(
+    (f) => f.kind === 'data' && f.globalNum === MSG_LENGTH && getField(f, F_TYPE) === ACTIVE,
+  );
+  return writeFit(
+    header,
+    frames.map((f) => {
+      const patch = edit(f, act);
+      return patch ? patchFrame(f, patch) : f.bytes;
+    }),
+  );
+}
+
+const breaststrokes = (u8) => active(u8).filter((f) => getField(f, F_STROKE) !== 0).length;
+
+test('split: never makes the stroke worse, whatever lengths per lap is', async () => {
+  /*
+   * The missed-turn guard is computed on the split file, where each half looks
+   * like one ordinary length. A fixed target then merged the halves back and
+   * the doubled stroke count read as breaststroke again: ticking "I remember
+   * turning here" with lengths-per-lap 1 wrote four breaststroke lengths into
+   * this all-freestyle swim, against three without it.
+   */
+  const u8 = await readFixture('swim-08.fit');
+  for (const lengthsPerLap of ['auto', 1, 2, 3]) {
+    const off = breaststrokes(repair(u8, { lengthsPerLap }).bytes);
+    const on = breaststrokes(repair(u8, { lengthsPerLap, splitMissedTurns: true }).bytes);
+    assert.ok(
+      on <= off,
+      `lengthsPerLap ${lengthsPerLap}: ${on} breaststroke with the split, ${off} without`,
+    );
+  }
+});
+
+test('split: says when a fixed target merges it straight back', async () => {
+  // "Now split into 2" beside a distance that did not move is a claim the file
+  // does not back; `gained` is what the page and CLI read to say so.
+  const u8 = await readFixture('swim-08.fit');
+  const gained = (opts) =>
+    analyze(u8, { ...opts, splitMissedTurns: true }).findings.find((f) => f.type === 'missed-turn')
+      .gained;
+  assert.equal(gained({}), 1, 'auto: the split adds its length');
+  assert.equal(gained({ lengthsPerLap: 1 }), 0, 'fixed 1: merged straight back');
+  assert.equal(gained({ lengthsPerLap: 2 }), 0, 'fixed 2: merged straight back');
+});
+
+test('split: everything that reports the watch reports it as recorded', async () => {
+  /*
+   * Only the stat cards subtracted the made-up length at first. The Watch
+   * column said 3 for a lap the watch recorded as 2, the lap-structure guard
+   * said "24 lengths down to 16" beside a card saying the watch recorded 23,
+   * and --dry-run counted 41 lengths in a 40-length file.
+   */
+  // Through both entry points: repair() runs its own copy of the pre-pass, and
+  // the first version of this fix only threaded the recorded-index map through
+  // analyze() -- which is what the tests used and the page does not.
+  const u8 = await readFixture('swim-08.fit');
+  const key = (await keyOf()).valueOf();
+  for (const [via, run] of [
+    ['analyze', (o) => analyze(u8, o)],
+    ['repair', (o) => repair(u8, o).info],
+  ])
+    for (const lengthsPerLap of ['auto', 1]) {
+      const off = run({ lengthsPerLap });
+      const on = run({ lengthsPerLap, splitMissedTurns: [key] });
+      assert.equal(on.lengths, off.lengths, `${via}, ${lengthsPerLap}: info.lengths`);
+      assert.deepEqual(
+        on.swimLaps.map((l) => l.recorded),
+        off.swimLaps.map((l) => l.lengths),
+        `${lengthsPerLap}: per-lap recorded counts`,
+      );
+      const pick = (i, type, field) =>
+        i.findings.filter((f) => f.type === type).map((f) => f[field]);
+      assert.deepEqual(pick(on, 'phantom-turn', 'detected'), pick(off, 'phantom-turn', 'detected'));
+      assert.deepEqual(
+        pick(on, 'lap-structure', 'lengthsBefore'),
+        pick(off, 'lap-structure', 'lengthsBefore'),
+      );
+      assert.equal(on.madeUpLengths, 1);
+    }
+});
+
+test('split: a length sharing the missed turn start second is left alone', async () => {
+  // Keys were start times at first, and a start time is not unique.
+  const u8 = await doctored((f, act) => {
+    const missed = act.find((x) => Math.round(getField(x, F_ELAPSED) / 1000) === 151);
+    return f === act[act.indexOf(missed) + 1]
+      ? { [F_START]: getField(missed, F_START) }
+      : undefined;
+  });
+  const lap = analyze(u8, { splitMissedTurns: true }).swimLaps.find((l) => l.lap === 11);
+  assert.deepEqual(lap.split, [true, true, false], 'only the missed turn, not its neighbour');
+});
+
+test('split: keys stay put after another missed turn has been split', async () => {
+  /*
+   * The page ticks one, re-analyses the split file, and takes the next key
+   * from that. Every later index of the split file is shifted by the made-up
+   * length, so a key taken from it would point at the wrong length -- keys are
+   * indices into the file as recorded.
+   */
+  const u8 = await doctored((f, act) =>
+    f === act[act.length - 2] ? { [F_ELAPSED]: 160_000, 4: 160_000, [F_STROKES]: 56 } : undefined,
+  );
+  const keys = analyze(u8)
+    .findings.filter((f) => f.type === 'missed-turn')
+    .map((f) => f.key);
+  assert.equal(keys.length, 2, 'the doctored file has two');
+  const second = analyze(u8, { splitMissedTurns: [keys[0]] }).findings.find(
+    (f) => f.type === 'missed-turn' && !f.split,
+  );
+  assert.equal(second.key, keys[1], 'the second key survives splitting the first');
+  assert.deepEqual(
+    repair(u8, { splitMissedTurns: [keys[0], second.key] }).bytes,
+    repair(u8, { splitMissedTurns: true }).bytes,
+  );
+});
