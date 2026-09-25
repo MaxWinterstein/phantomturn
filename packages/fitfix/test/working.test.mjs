@@ -12,7 +12,8 @@
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { analyze, repair } from '../src/swim-repair.js';
+import { getField, patchFrame, readFit, writeFit } from '../src/fit-patch.js';
+import { analyze, mergeToTarget, repair } from '../src/swim-repair.js';
 import { ORIGINALS, readFixture } from './fixtures.mjs';
 
 const EPSILON = 1e-6;
@@ -52,7 +53,7 @@ test('working: each lap lists every recorded length, and they add up', async () 
       assert.equal(lap.lengthsS.length, lap.lengths, `${where}: one duration per length`);
       assert.equal(lap.lengthStrokes.length, lap.lengths, `${where}: one stroke count per length`);
 
-      const total = lap.lengthsS.reduce((a, s) => a + s, 0);
+      const total = lap.lengthsS.reduce((a, s) => a + (s ?? 0), 0);
       assert.ok(Math.abs(total - lap.durS) < EPSILON, `${where}: durations sum to the lap`);
       const strokes = lap.lengthStrokes.reduce((a, s) => a + s, 0);
       assert.equal(strokes, lap.strokes, `${where}: strokes sum to the lap`);
@@ -86,4 +87,82 @@ test('working: a phantom split reads as fragments of one length', async () => {
     [3, 2],
     'the 3- and 2-length blocks from swimming through the turn survive',
   );
+});
+
+test('working: a lap too big to partition exactly still yields the promised count', () => {
+  /*
+   * Past 256 lengths mergeToTarget gives up on the optimal partition and cuts
+   * equal chunks. It used to cut fixed chunks of ceil(size / n), which is
+   * *fewer* than n groups -- 257 lengths at a target of 64 came out as 52 --
+   * while the table, the findings and the lap-structure guard all said 64.
+   * No real swim has a 257-length lap; a crafted file does, and the fixtures
+   * never reach this path, which is how it went unnoticed.
+   */
+  const dur = () => 50;
+  for (const [size, n] of [
+    [257, 64],
+    [257, 2],
+    [300, 225],
+    [1000, 7],
+    [257, 256],
+  ]) {
+    const indices = Array.from({ length: size }, (_, k) => k);
+    const groups = mergeToTarget(indices, n, dur);
+    assert.equal(groups.length, n, `${size} lengths at ${n}: group count`);
+    assert.ok(
+      groups.every((g) => g.length >= 1),
+      `${size} at ${n}: no empty group`,
+    );
+    assert.deepEqual(groups.flat(), indices, `${size} at ${n}: every length once, in order`);
+    const sizes = groups.map((g) => g.length);
+    assert.ok(Math.max(...sizes) - Math.min(...sizes) <= 1, `${size} at ${n}: even split`);
+  }
+});
+
+/** swim-03 with the duration fields of the first `count` active lengths removed. */
+async function untimed(count) {
+  const [MSG_LENGTH, F_TYPE, F_ELAPSED, F_TIMER, ACTIVE] = [101, 12, 3, 4, 1];
+  const { header, frames } = readFit(await readFixture('swim-03.fit'));
+  let left = count;
+  const out = frames.map((f) => {
+    if (
+      left > 0 &&
+      f.kind === 'data' &&
+      f.globalNum === MSG_LENGTH &&
+      getField(f, F_TYPE) === ACTIVE
+    ) {
+      left--;
+      return patchFrame(f, { [F_ELAPSED]: null, [F_TIMER]: null });
+    }
+    return f.bytes;
+  });
+  return writeFit(header, out);
+}
+
+test('working: a length with no recorded duration is null, not zero seconds', async () => {
+  // Shown as "—" by both front ends. As 0 it read as a real, impossibly fast
+  // length -- exactly the kind of thing someone checking a merge would trust.
+  const info = analyze(await untimed(1));
+  const all = info.swimLaps.flatMap((l) => l.lengthsS);
+  assert.equal(all.filter((s) => s === null).length, 1, 'exactly the one untimed length');
+  assert.ok(
+    all.filter((s) => s !== null).every((s) => s > 0),
+    'the rest are real durations',
+  );
+});
+
+test('working: auto with nothing to measure says auto, not fixed', async () => {
+  // With every duration gone no unit can be inferred and auto falls back to
+  // one length per lap. `lengthUnitS` is null exactly as it is for a fixed
+  // number, so the front ends need `autoLengths` to tell the two apart.
+  const info = analyze(await untimed(Number.POSITIVE_INFINITY));
+  assert.equal(info.lengthUnitS, null);
+  assert.equal(info.autoLengths, true);
+  assert.ok(
+    info.swimLaps.every((l) => l.target === 1),
+    'falls back to one per lap',
+  );
+
+  const fixed = analyze(await readFixture('swim-03.fit'), { lengthsPerLap: 2 });
+  assert.equal(fixed.autoLengths, false);
 });

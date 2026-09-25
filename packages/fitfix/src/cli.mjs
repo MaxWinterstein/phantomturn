@@ -190,14 +190,16 @@ function printWorking(info) {
   console.log(
     info.lengthUnitS
       ? `  working -- one length reads as ~${Math.round(info.lengthUnitS)} s`
-      : '  working -- lengths per lap was fixed, not inferred',
+      : info.autoLengths
+        ? '  working -- auto, but no usable durations: each lap taken as one length'
+        : '  working -- lengths per lap was fixed, not inferred',
   );
   // Lap numbers skip wherever the swimmer rested: a rest lap holds no lengths,
   // so it has nothing to show. Said here so the gaps do not read as a bug.
   console.log('    lap  watch    fixed  the lengths it saw (s)       rest laps not shown');
   for (const l of info.swimLaps) {
     const merged = l.lengths > l.target;
-    const seen = l.lengthsS.map((s) => Math.round(s)).join(' + ');
+    const seen = l.lengthsS.map((s) => (s === null ? '?' : Math.round(s))).join(' + ');
     console.log(
       `    ${String(l.lap + 1).padStart(3)}  ${String(l.lengths).padStart(5)} -> ${String(l.target).padEnd(5)}  ${seen}${merged ? '   merged' : ''}`,
     );

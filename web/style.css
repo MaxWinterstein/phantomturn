@@ -591,6 +591,11 @@ body.dragging::after {
   padding-left: 0.2rem;
 }
 
+/* Clear of the 3px tint bar, which it otherwise sat flush against. */
+.working-table tr.is-merged td:first-child {
+  padding-left: 0.6rem;
+}
+
 .working-table .num {
   white-space: nowrap;
 }

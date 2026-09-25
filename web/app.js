@@ -290,12 +290,21 @@ function renderWorking(info) {
     ? `${merged} lap${merged === 1 ? '' : 's'} merged`
     : `${laps.length} laps, none merged`;
 
-  workingUnit.textContent = info.lengthUnitS
-    ? `One length in this swim reads as about ${Math.round(info.lengthUnitS)} seconds. ` +
+  if (info.lengthUnitS) {
+    workingUnit.textContent =
+      `One length in this swim reads as about ${Math.round(info.lengthUnitS)} seconds. ` +
       'Two short lengths that add up to about one are a turn the watch imagined; ' +
-      'lengths that are each about one are real, however many there are.'
-    : 'Lengths per lap is set to a fixed number under Assumptions, so each lap is ' +
+      'lengths that are each about one are real, however many there are.';
+  } else if (info.autoLengths) {
+    workingUnit.textContent =
+      'This file has no usable length durations to measure a length against, so ' +
+      'each lap is treated as a single length. If that is wrong, set a number under ' +
+      'Assumptions.';
+  } else {
+    workingUnit.textContent =
+      'Lengths per lap is set to a fixed number under Assumptions, so each lap is ' +
       'cut to that many rather than measured.';
+  }
 
   workingRows.innerHTML = laps
     .map((l) => {
@@ -303,13 +312,18 @@ function renderWorking(info) {
       // Each duration unbreakable, so a narrow screen wraps at the "+" and never
       // strands the unit: "95" on one line and "s" on the next was the result.
       const seen = l.lengthsS
-        .map((s) => `<span class="dur">${esc(Math.round(s))} s</span>`)
+        .map((s) =>
+          // A length the watch never timed is "—", not a confident "0 s".
+          s === null
+            ? '<span class="dur" title="no duration recorded">—</span>'
+            : `<span class="dur">${esc(Math.round(s))} s</span>`,
+        )
         .join(' + ');
       return `
         <tr class="${isMerged ? 'is-merged' : ''}">
           <td class="num">${esc(l.lap + 1)}</td>
           <td class="num">${esc(l.lengths)}</td>
-          <td class="num">${isMerged ? '→ ' : ''}${esc(l.target)}</td>
+          <td class="num">${isMerged ? '<span aria-hidden="true">→ </span>' : ''}${esc(l.target)}</td>
           <td class="seen">${seen}${isMerged ? ' <span class="working-tag">merged</span>' : ''}</td>
         </tr>`;
     })
