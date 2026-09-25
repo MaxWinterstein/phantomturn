@@ -415,10 +415,21 @@ export function analyze(u8, opts = {}) {
     swimLaps.push({
       lap: li,
       lengths: act.length,
+      /** What the repair will leave in this lap -- never more than `lengths`. */
+      target: Math.min(act.length, target),
       durS: durMs / 1000,
       strokes,
       stroke,
       deviceStroke,
+      /*
+       * Each recorded length on its own, in order. The lap totals above cannot
+       * tell "47 s + 44 s" (one length the watch split in two) from "81 s +
+       * 84 s" (two real lengths) -- and that difference is the whole question
+       * a swimmer is asking when a repaired distance looks wrong. Exposed so a
+       * front end can show the evidence rather than only the verdict.
+       */
+      lengthsS: act.map(durationOf),
+      lengthStrokes: act.map((k) => getField(lengths[k], F.length.strokes) ?? 0),
     });
 
     if (act.length > target)

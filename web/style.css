@@ -535,6 +535,91 @@ body.dragging::after {
   padding-top: 1.1rem;
 }
 
+/* ---------------------------------------------------------------- working */
+/* "Show the working": the same disclosure as Assumptions, holding a table. */
+.working-body {
+  padding: 1rem 1.1rem 1.1rem;
+  border-top: 1px solid var(--border);
+}
+
+.working-unit,
+.working-note {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+.working-note {
+  margin-top: 0.85rem;
+  font-size: 0.8rem;
+}
+
+.working-table {
+  width: 100%;
+  margin-top: 0.85rem;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  /* Durations line up digit under digit, which is what makes "47 + 44"
+     against "81 + 84" readable at a glance. */
+  font-variant-numeric: tabular-nums;
+}
+
+.working-table th {
+  padding: 0 0.6rem 0.45rem;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.working-table td {
+  padding: 0.45rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.working-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.working-table th:first-child,
+.working-table td:first-child {
+  padding-left: 0.2rem;
+}
+
+.working-table .num {
+  white-space: nowrap;
+}
+
+.working-table td:first-child {
+  color: var(--muted);
+}
+
+/* The rows the repair changed, in the same tone as a phantom-turn finding --
+   the two describe the same event, so they should look like it. */
+.working-table tr.is-merged td {
+  background: color-mix(in srgb, var(--warn-soft) 45%, var(--surface));
+}
+
+.working-table tr.is-merged td:first-child {
+  box-shadow: inset 3px 0 0 var(--warn);
+}
+
+.working-table .dur {
+  white-space: nowrap;
+}
+
+.working-tag {
+  margin-left: 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--warn);
+}
+
 .option {
   display: grid;
   gap: 0.35rem;

@@ -63,6 +63,18 @@ test('--dry-run reports without writing anything', async () => {
   await assert.rejects(readFile(out), /ENOENT/, '--dry-run wrote a file');
 });
 
+test('--dry-run shows the working, lap by lap', async () => {
+  // swim-07 has exactly one phantom split among real multi-length blocks, so
+  // the breakdown has to show both the merge and the blocks it left alone.
+  const swim07 = join(dir, 'swim-07.fit');
+  await writeFile(swim07, await readFixture('swim-07.fit'));
+  const { stdout } = await cli([swim07, '--dry-run']);
+
+  assert.match(stdout, /working -- one length reads as ~81 s/);
+  assert.match(stdout, /^\s+2\s+2 -> 1\s+47 \+ 44\s+merged$/m, 'the phantom split, merged');
+  assert.match(stdout, /^\s+18\s+3 -> 3\s+81 \+ 84 \+ 95$/m, 'a real block, kept');
+});
+
 test('repairs a file and honours the assumptions', async () => {
   const fixed = join(dir, 'fixed.fit');
   const { stdout } = await cli([input, fixed]);
