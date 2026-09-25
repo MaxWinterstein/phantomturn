@@ -24,6 +24,7 @@ export const ORIGINALS = [
   'swim-05.fit',
   'swim-06.fit',
   'swim-07.fit',
+  'swim-08.fit',
 ];
 
 /**
@@ -67,7 +68,14 @@ export const POOL_OVERRIDE = { 'swim-05.fit': 18 };
  * `strokeSplit: 40` matters only for swim-05: at 50 m the scaled default works
  * out to exactly 40, so the older fixtures never noticed.
  */
-const AS_REFERENCE = { lengthsPerLap: 1, strokeSplit: 40, durationSplit: 100 };
+const AS_REFERENCE = {
+  lengthsPerLap: 1,
+  strokeSplit: 40,
+  durationSplit: 100,
+  // The reference writes the stroke-count verdict even when it disagrees with
+  // the duration; the JS now keeps the watch's label there by default.
+  keepStrokeWhenUnsure: false,
+};
 
 export const GOLDEN = {
   'swim-02.fit': {

@@ -199,9 +199,12 @@ function printWorking(info) {
   console.log('    lap  watch    fixed  the lengths it saw (s)       rest laps not shown');
   for (const l of info.swimLaps) {
     const merged = l.lengths > l.target;
-    const seen = l.lengthsS.map((s) => (s === null ? '?' : Math.round(s))).join(' + ');
+    const seen = l.lengthsS
+      .map((s, i) => (s === null ? '?' : `${Math.round(s)}${l.missedTurns[i] ? '!' : ''}`))
+      .join(' + ');
+    const missed = l.missedTurns.some(Boolean);
     console.log(
-      `    ${String(l.lap + 1).padStart(3)}  ${String(l.lengths).padStart(5)} -> ${String(l.target).padEnd(5)}  ${seen}${merged ? '   merged' : ''}`,
+      `    ${String(l.lap + 1).padStart(3)}  ${String(l.lengths).padStart(5)} -> ${String(l.target).padEnd(5)}  ${seen}${merged ? '   merged' : ''}${missed ? '   possible missed turn' : ''}`,
     );
   }
 }
@@ -216,6 +219,22 @@ if (opts.lengthsPerLap === 'auto' && info.lengthUnitS) {
         ? `lengths per lap varied: ${info.lapTargets.filter((_, i) => info.lapLengths[i].length).join(', ')}`
         : 'one length per lap throughout'),
   );
+}
+
+/*
+ * Also loud, for the opposite reason: the file comes out short and this tool
+ * cannot fix it. It merges; it never splits -- that would mean inventing a
+ * turn the watch never recorded -- so the most it can do is say so.
+ */
+for (const f of info.findings.filter((f) => f.type === 'missed-turn')) {
+  console.warn('');
+  console.warn(
+    `  !!  lap ${f.lap + 1}: possible missed turn -- one length took ${Math.round(f.durS)} s`,
+  );
+  console.warn(
+    `  !!  with ${f.strokes} strokes, about ${f.looksLike} lengths' worth (one is ~${Math.round(f.unitS)} s).`,
+  );
+  console.warn(`  !!  The distance is probably ${f.looksLike - 1} length(s) short. Not fixed.`);
 }
 
 // Loud, before anything else: this is the case where the output is garbage.
