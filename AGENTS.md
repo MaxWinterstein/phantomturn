@@ -314,7 +314,7 @@ for screenshots and for checking a deploy.
   real distance. It reports rather than refuses, because the data alone cannot
   distinguish "many phantom turns" from "a different lapping habit". Fixture 1
   trips it legitimately. Keep it loud in every front end.
-- **A missed turn is reported, never repaired.** Two lengths recorded as one
+- **A missed turn is reported, and repaired only on request.** Two lengths recorded as one
   show up as a single length at ~2x the unit *and* ~2x the median stroke count
   (`MISSED_TURN_RATIO`, 1.75). Both halves matter: a kick set or a pause at the
   wall is long without the strokes, and an 18 m pool reaches 1.61x on duration
@@ -323,6 +323,18 @@ for screenshots and for checking a deploy.
   such a length is left as the watch said: its count covers two lengths, so
   measured against a per-length threshold it reads as breaststroke, which is
   exactly what used to get written into an all-freestyle swim.
+- **A split is a pre-pass, and it is opt-in on purpose.** `splitMissedTurns`
+  runs `applySplits()` before anything else sees the file, so every other
+  guarantee -- lap targets, stroke decisions, the working table adding up to
+  what is written -- holds on the split file unchanged. It is the one place
+  this tool adds data: a merge only discards, so every number it writes was
+  measured, but a split has to make up where the turn fell and how the strokes
+  divide. Keep it off by default, keyed per length (the finding's `key`, the
+  length's start time), and keep the made-up lengths marked as such
+  (`swimLaps[].split`) in every front end. `split.test.mjs` holds it to adding
+  nothing but a length: total time and strokes are unchanged. Before/after
+  figures must subtract the made-up lengths, or "before" includes data that
+  never existed.
 - **Stroke decisions are made once, in `analyze()`.** `strokeWrite` maps each
   merged group to the stroke to write, or `null` to keep the watch's label, and
   `repair()` writes that rather than re-deriving it. It re-derived it once, and

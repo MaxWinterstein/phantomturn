@@ -160,11 +160,14 @@ scrubbing step that is not optional.
   you lapped inconsistently, which no single number can. It is still a
   heuristic tuned on seven files — check the before/after numbers, and put a
   number in if you disagree.
-- **It only ever merges, never splits.** If the watch *missed* a turn and
-  recorded two lengths as one, the file stays one length short — splitting it
-  would mean inventing a turn the watch never recorded. It does now *say* so: a
-  length that runs as long as two, in both time and strokes, gets a "possible
-  missed turn" finding, and its stroke is left as the watch recorded it.
+- **It merges on its own, and splits only when you ask.** If the watch *missed*
+  a turn and recorded two lengths as one, you get a "possible missed turn"
+  finding: a length that runs as long as two, in both time and strokes, with its
+  stroke left as the watch recorded it. The file stays short unless you tick
+  *Split into 2 lengths* on that finding (`--split-missed-turns=LAP` on the
+  command line). The split lengths are made up — the turn is put halfway and
+  the strokes are divided with the time — and are marked that way in *Show the
+  working*. Total time and strokes don't change; only the length count does.
 - The freestyle/breaststroke split defaults to `auto`, which scales it from the
   pool length — 40 strokes per length at 50 m, proportionally fewer in a short
   pool. The constant behind it was still fitted on one swimmer, so a fixed

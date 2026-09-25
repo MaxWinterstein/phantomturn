@@ -182,6 +182,23 @@ test('a zip with no activity file in it says so', async () => {
   assert.match(stderr, /no \.fit file inside/);
 });
 
+test('--split-missed-turns splits only when asked, and only a real one', async () => {
+  const swim08 = join(dir, 'swim-08.fit');
+  await writeFile(swim08, await readFixture('swim-08.fit'));
+
+  const plain = await cli([swim08, join(dir, 'plain.fit')]);
+  assert.match(plain.stdout, /1050 m, 21 lengths/, 'off by default');
+  assert.match(plain.stderr, /--split-missed-turns=12 splits it/, 'and it says how');
+
+  const split = await cli([swim08, join(dir, 'split.fit'), '--split-missed-turns=12']);
+  assert.match(split.stdout, /1100 m, 22 lengths/);
+  assert.match(split.stderr, /made up, not recorded/);
+
+  const wrong = await cli([swim08, '--split-missed-turns=3']);
+  assert.equal(wrong.code, 2, 'a lap with no missed turn is refused, not ignored');
+  assert.match(wrong.stderr, /no possible missed turn in lap 3/);
+});
+
 test('a file it cannot safely repair fails loudly', async () => {
   const truncated = join(dir, 'truncated.fit');
   await writeFile(truncated, (await readFixture('swim-02.fit')).subarray(0, 4000));
