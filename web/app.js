@@ -293,8 +293,9 @@ function renderWorking(info) {
   if (info.lengthUnitS) {
     workingUnit.textContent =
       `One length in this swim reads as about ${Math.round(info.lengthUnitS)} seconds. ` +
-      'Two short lengths that add up to about one are a turn the watch imagined; ' +
-      'lengths that are each about one are real, however many there are.';
+      'Two short lengths that add up to about one look like a turn the watch imagined, ' +
+      'and are merged; lengths that are each about one look real, and are kept. That is ' +
+      'the rule, not proof — check it against what you remember swimming.';
   } else if (info.autoLengths) {
     workingUnit.textContent =
       'This file has no usable length durations to measure a length against, so ' +

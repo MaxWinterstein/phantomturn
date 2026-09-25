@@ -449,7 +449,9 @@ export function analyze(u8, opts = {}) {
         const ms = getField(lengths[k], F.length.elapsed);
         return ms === null ? null : ms / 1000;
       }),
-      lengthStrokes: act.map((k) => getField(lengths[k], F.length.strokes) ?? 0),
+      // null where no stroke count was recorded, as lengthsS does for a missing
+      // duration; the lap total above keeps treating it as 0.
+      lengthStrokes: act.map((k) => getField(lengths[k], F.length.strokes)),
     });
 
     if (act.length > target)

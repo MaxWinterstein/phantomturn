@@ -55,7 +55,7 @@ test('working: each lap lists every recorded length, and they add up', async () 
 
       const total = lap.lengthsS.reduce((a, s) => a + (s ?? 0), 0);
       assert.ok(Math.abs(total - lap.durS) < EPSILON, `${where}: durations sum to the lap`);
-      const strokes = lap.lengthStrokes.reduce((a, s) => a + s, 0);
+      const strokes = lap.lengthStrokes.reduce((a, s) => a + (s ?? 0), 0);
       assert.equal(strokes, lap.strokes, `${where}: strokes sum to the lap`);
 
       // Merging only ever goes down; nothing is split.
