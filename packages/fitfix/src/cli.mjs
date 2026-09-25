@@ -186,8 +186,17 @@ if (isZip(raw)) {
 
 const dst = pos[1] ?? join(dirname(src), `${label.replace(/\.fit$/i, '')}_fixed.fit`);
 
-if (splitLaps === true) opts.splitMissedTurns = true;
-else if (splitLaps) {
+if (splitLaps === true) {
+  opts.splitMissedTurns = true;
+  // Said, not silently skipped: "I asked for a split and nothing happened"
+  // should never have to be worked out from the distance alone.
+  if (
+    !analyze(u8, { ...opts, splitMissedTurns: false }).findings.some(
+      (f) => f.type === 'missed-turn',
+    )
+  )
+    console.warn(`${label}: --split-missed-turns: no possible missed turn to split`);
+} else if (splitLaps) {
   const found = analyze(u8, { ...opts, splitMissedTurns: false }).findings.filter(
     (f) => f.type === 'missed-turn',
   );
@@ -243,7 +252,7 @@ function printWorking(info) {
       .join(' + ');
     const missed = l.missedTurns.some(Boolean);
     console.log(
-      `    ${String(l.lap + 1).padStart(3)}  ${String(l.lengths).padStart(5)} -> ${String(l.target).padEnd(5)}  ${seen}${merged ? '   merged' : ''}${missed ? '   possible missed turn' : ''}${l.split.some(Boolean) ? '   split (* made up)' : ''}`,
+      `    ${String(l.lap + 1).padStart(3)}  ${String(l.recorded).padStart(5)} -> ${String(l.target).padEnd(5)}  ${seen}${merged ? '   merged' : ''}${missed ? '   possible missed turn' : ''}${l.split.some(Boolean) ? '   split (* made up)' : ''}`,
     );
   }
 }
@@ -261,12 +270,21 @@ if (opts.lengthsPerLap === 'auto' && info.lengthUnitS) {
 }
 
 /*
- * Also loud, for the opposite reason: the file comes out short and this tool
- * cannot fix it. It merges; it never splits -- that would mean inventing a
- * turn the watch never recorded -- so the most it can do is say so.
+ * Also loud, for the opposite reason: the file comes out short. The tool only
+ * splits when asked -- a split invents a turn the watch never recorded -- so
+ * by default the most it does is say so, and how to ask.
  */
 for (const f of info.findings.filter((f) => f.type === 'missed-turn')) {
   console.warn('');
+  if (f.split && f.gained === 0) {
+    console.warn(
+      `  !!  lap ${f.lap + 1}: split as asked, but the fixed --lengths-per-lap merges the parts`,
+    );
+    console.warn(
+      '  !!  straight back -- the distance is unchanged by it. Use auto for it to count.',
+    );
+    continue;
+  }
   if (f.split) {
     console.warn(
       `  !!  lap ${f.lap + 1}: split a ${Math.round(f.durS)} s length into ${f.looksLike}, as asked.`,
