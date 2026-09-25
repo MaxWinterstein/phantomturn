@@ -442,8 +442,11 @@ function applySplits(u8, o) {
     let usedStrokes = 0;
     for (let i = 0; i < parts; i++) {
       const last = i === parts - 1;
-      const partMs = last ? ms - usedMs : Math.round(ms / parts);
-      const partStrokes = last ? strokes - usedStrokes : Math.round(strokes / parts);
+      // Floored, not rounded: rounding can go up on every part but the last
+      // and leave it a negative remainder -- 2 strokes in 4 parts came out as
+      // 1, 1, 1, -1, which an unsigned field turns into the invalid marker.
+      const partMs = last ? ms - usedMs : Math.floor(ms / parts);
+      const partStrokes = last ? strokes - usedStrokes : Math.floor(strokes / parts);
       out.push(
         patchFrame(fr, {
           [F.length.startTime]: start + Math.round(usedMs / 1000),
