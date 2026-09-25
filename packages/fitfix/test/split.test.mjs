@@ -262,3 +262,30 @@ test('split: keys stay put after another missed turn has been split', async () =
     repair(u8, { splitMissedTurns: true }).bytes,
   );
 });
+
+test('split: a part never goes negative, however few strokes there are', async () => {
+  /*
+   * From review. Non-last parts were rounded, so every one could round up and
+   * leave the last with a negative remainder: 2 strokes in 4 parts came out as
+   * 1, 1, 1 and -1. Written into an unsigned field, -1 is the invalid marker,
+   * read back as 0, and total strokes rose from 2 to 3 -- exactly the "adds
+   * nothing else" the split promises not to break. Needs a swim with about one
+   * stroke per length, so it is doctored: every length 1 stroke, and one of
+   * them four lengths long with 2.
+   */
+  const u8 = await doctored((f, act) => {
+    if (!act.includes(f)) return undefined;
+    return f === act[5] ? { [F_ELAPSED]: 320_000, 4: 320_000, [F_STROKES]: 2 } : { [F_STROKES]: 1 };
+  });
+  const found = analyze(u8).findings.find((f) => f.type === 'missed-turn');
+  assert.ok(found, 'the doctored length reads as a missed turn');
+  assert.ok(found.looksLike >= 3, `split into ${found.looksLike}, enough parts to round badly`);
+
+  const sum = (b) => active(b).reduce((a, f) => a + (getField(f, F_STROKES) ?? 0), 0);
+  const out = repair(u8, { splitMissedTurns: true }).bytes;
+  assert.equal(sum(out), sum(repair(u8).bytes), 'total strokes unchanged');
+  assert.ok(
+    active(out).every((f) => getField(f, F_STROKES) !== null),
+    'no part written as the invalid marker',
+  );
+});
