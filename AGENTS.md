@@ -158,6 +158,8 @@ PYTHONPATH=/tmp/pylibs pkgx +python.org -- python3 \
 
 **The reference hardcodes its assumptions, and the JS has since moved past
 several of them.** `AS_REFERENCE` in `fixtures.mjs` pins them all back:
+`keepStrokeWhenUnsure: false` (it writes the stroke-count verdict even when
+the duration disagrees, where the JS now keeps the watch's label),
 `lengthsPerLap: 1` (it merges every active length in a lap, full stop),
 `strokeSplit: 40` and `durationSplit: 100` (per-length constants fitted at
 50 m, where the JS's scaled defaults happen to land on exactly the same
@@ -187,6 +189,7 @@ assumption is worth a lot.
 | swim-05 | **18 m**, recorded as 20 m | short pool, **wrong pool size**, and the first file to break the unit estimator | **open** — watch 64, time 63.7, strokes 63.8 |
 | swim-06 | 18 m, recorded correctly | short pool where nearly every recorded length is already a real length, so *any* merging is wrong | **open** — watch 63, time 61.4, strokes 64.5 |
 | swim-07 | 50 m | nearly clean: one true phantom split among thirty single-length laps, plus two genuine blocks (3 and 2 lengths) from swimming through the turn — laps end at rests, not button presses, so multi-length laps are normal use and a blanket merge destroys real distance | 17 / 850 m |
+| swim-08 | 50 m | the first **missed turn**: lap 12 holds a 151 s length with 51 strokes, twice a normal length in both. Nothing merges it -- the tool cannot split -- so the file comes out one short and the `missed-turn` finding has to account for the difference exactly | 22 / 1100 m, all freestyle (21 written + 1 reported) |
 
 ### How the length unit is chosen, and why it changed twice
 
@@ -311,6 +314,20 @@ for screenshots and for checking a deploy.
   real distance. It reports rather than refuses, because the data alone cannot
   distinguish "many phantom turns" from "a different lapping habit". Fixture 1
   trips it legitimately. Keep it loud in every front end.
+- **A missed turn is reported, never repaired.** Two lengths recorded as one
+  show up as a single length at ~2x the unit *and* ~2x the median stroke count
+  (`MISSED_TURN_RATIO`, 1.75). Both halves matter: a kick set or a pause at the
+  wall is long without the strokes, and an 18 m pool reaches 1.61x on duration
+  alone. The threshold rests on one positive example (swim-08) and seven
+  negatives -- do not lower it without a second real one. And the stroke of
+  such a length is left as the watch said: its count covers two lengths, so
+  measured against a per-length threshold it reads as breaststroke, which is
+  exactly what used to get written into an all-freestyle swim.
+- **Stroke decisions are made once, in `analyze()`.** `strokeWrite` maps each
+  merged group to the stroke to write, or `null` to keep the watch's label, and
+  `repair()` writes that rather than re-deriving it. It re-derived it once, and
+  the page promised the watch's label was kept for ambiguous strokes while the
+  file got the stroke count's verdict regardless.
 - **Second vs millisecond resolution.** `length.start_time` is in whole
   seconds, `lap.total_elapsed_time` in milliseconds. Lap boundaries are derived
   from the *next* lap's `start_time` to stay in whole seconds throughout. A

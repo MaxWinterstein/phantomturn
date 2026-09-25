@@ -92,6 +92,21 @@ export const DEFAULTS = {
   poolLength: null,
   /** Overwrite the watch's own stroke classification. */
   reclassifyStroke: true,
+  /**
+   * Leave the watch's stroke label alone when the evidence for changing it is
+   * unreliable: the stroke count and the duration disagree, or the length
+   * looks like two lengths the watch recorded as one (a missed turn), so its
+   * stroke count covers two lengths and means nothing against a per-length
+   * threshold.
+   *
+   * The page has always told people the watch's label is kept when the two
+   * criteria disagree; until this option existed it was not -- the stroke
+   * count's verdict was written anyway, and two ambiguous groups in the
+   * fixtures had the watch's breaststroke overwritten with freestyle. The
+   * Python reference writes the verdict unconditionally, so AS_REFERENCE turns
+   * this off.
+   */
+  keepStrokeWhenUnsure: true,
   /** Set elapsed time to timer time when the timer was never paused. */
   normalizeElapsed: true,
 };
@@ -200,6 +215,21 @@ export function mergeToTarget(indices, target, durationOf) {
  */
 const STROKES_PER_100M = 80;
 const SECONDS_PER_100M = 200;
+
+/**
+ * How far past one length -- in duration *and* in stroke count, both -- a
+ * single recorded length has to run before it reads as two lengths the watch
+ * recorded as one, a missed turn.
+ *
+ * Both, because either alone fires on real swims. Across the first seven
+ * fixtures the longest single length relative to its swim's unit is 1.61x
+ * (swim-05, an 18 m pool, where turn and push-off are a large share of a
+ * length) and breaststroke runs to 1.47x; "rounds to two", at 1.5x, would
+ * flag both short-pool files. swim-08's missed turn is 1.92x the unit with
+ * 1.9x the median stroke count. 1.75 sits between -- on one positive
+ * example, which is why this only ever reports and never splits.
+ */
+const MISSED_TURN_RATIO = 1.75;
 
 /** Resolves a threshold that may be 'auto', scaling it to one length. */
 const perLength = (setting, poolM, per100) =>
@@ -410,6 +440,42 @@ export function analyze(u8, opts = {}) {
     alternative,
   } = resolveLapTargets(lapActive, durationOf, o.lengthsPerLap);
 
+  /*
+   * Lengths that look like two recorded as one. The reference length has to
+   * exist even when lengths-per-lap is a fixed number, since a missed turn
+   * has nothing to do with how the lap button was pressed -- so it is
+   * estimated here if auto did not already produce one.
+   */
+  const refUnit = unit ?? estimateLengthUnit(lapActive, durationOf).unit;
+  const knownStrokes = lapActive
+    .flat()
+    .map((k) => getField(lengths[k], F.length.strokes))
+    .filter((s) => s !== null)
+    .sort((a, b) => a - b);
+  const medianStrokes = knownStrokes.length
+    ? knownStrokes[Math.floor(knownStrokes.length / 2)]
+    : null;
+  const missed = new Set();
+  if (refUnit && medianStrokes) {
+    for (const k of lapActive.flat()) {
+      const s = getField(lengths[k], F.length.strokes);
+      if (
+        durationOf(k) >= MISSED_TURN_RATIO * refUnit &&
+        s !== null &&
+        s >= MISSED_TURN_RATIO * medianStrokes
+      )
+        missed.add(k);
+    }
+  }
+
+  /*
+   * The stroke each merged group gets written as, keyed by the group's first
+   * length -- the one that survives. null means "leave the watch's label".
+   * Decided once here and handed to repair(), like lapTargets, so the page
+   * cannot say a label is kept while the file says otherwise.
+   */
+  const strokeWrite = new Map();
+
   const findings = [];
   const swimLaps = [];
   lapActive.forEach((act, li) => {
@@ -452,7 +518,26 @@ export function analyze(u8, opts = {}) {
       // null where no stroke count was recorded, as lengthsS does for a missing
       // duration; the lap total above keeps treating it as 0.
       lengthStrokes: act.map((k) => getField(lengths[k], F.length.strokes)),
+      /** Per recorded length: does it look like two lengths recorded as one? */
+      missedTurns: act.map((k) => missed.has(k)),
     });
+
+    for (const k of act) {
+      if (!missed.has(k)) continue;
+      const durS = durationOf(k);
+      findings.push({
+        type: 'missed-turn',
+        lap: li,
+        durS,
+        strokes: getField(lengths[k], F.length.strokes),
+        looksLike: Math.round(durS / refUnit),
+        unitS: refUnit,
+        note:
+          'one recorded length runs as long as two, in both time and strokes -- ' +
+          'probably a turn the watch did not see. Nothing is split: that would ' +
+          'mean inventing a turn the watch never recorded.',
+      });
+    }
 
     if (act.length > target)
       findings.push({
@@ -483,7 +568,15 @@ export function analyze(u8, opts = {}) {
         (k) => SWIM_STROKE[k] === getField(lengths[group[0]], F.length.swimStroke),
       );
 
-      if (byStrokes !== byTime)
+      const ambiguous = byStrokes !== byTime;
+      const holdsMissedTurn = group.some((k) => missed.has(k));
+      const keep = o.keepStrokeWhenUnsure && (ambiguous || holdsMissedTurn);
+      strokeWrite.set(group[0], keep ? null : gStroke);
+
+      // A missed turn doubles the stroke count, so a stroke finding about it
+      // would be reporting on an artefact -- the missed-turn finding covers it.
+      if (holdsMissedTurn && keep) continue;
+      if (ambiguous)
         findings.push({
           type: 'ambiguous-stroke',
           lap: li,
@@ -607,6 +700,8 @@ export function analyze(u8, opts = {}) {
      * unit to mean "fixed" told the swimmer they had set a number they had not.
      */
     autoLengths: o.lengthsPerLap === 'auto',
+    /** Group's first length -> stroke to write, or null to keep the watch's. */
+    strokeWrite,
   };
 }
 
@@ -675,11 +770,21 @@ export function repair(u8, opts = {}) {
           [F.length.avgSpeed]: durS > 0 ? (poolM / durS) * 1000 : 0,
           [F.length.cadence]: durS > 0 ? (strokes * 60) / durS : 0,
         };
-        if (o.reclassifyStroke)
-          spec[F.length.swimStroke] =
-            SWIM_STROKE[strokes >= strokeSplit ? 'breaststroke' : 'freestyle'];
+        // analyze() decided the stroke per group, including when to leave the
+        // watch's label alone; recomputing it here is how the two used to
+        // disagree.
+        const decided = info.strokeWrite.get(k);
+        const watchSaid = Object.keys(SWIM_STROKE).find(
+          (n) => SWIM_STROKE[n] === getField(lengths[k], F.length.swimStroke),
+        );
+        if (o.reclassifyStroke && decided) spec[F.length.swimStroke] = SWIM_STROKE[decided];
         newSpecs.set(k, spec);
-        newInfo.push({ durMs, active: true, strokes });
+        newInfo.push({
+          durMs,
+          active: true,
+          strokes,
+          stroke: decided ?? watchSaid ?? (strokes >= strokeSplit ? 'breaststroke' : 'freestyle'),
+        });
         mine.push(idx);
       }
     }
@@ -716,9 +821,9 @@ export function repair(u8, opts = {}) {
       [F.lap.avgCadence]: ratio(strokes * 60, swimMs / 1000),
     };
     if (act.length && o.reclassifyStroke) {
-      const kinds = new Set(
-        act.map((k) => (newInfo[k].strokes >= strokeSplit ? 'breaststroke' : 'freestyle')),
-      );
+      // From what each surviving length now says, so a lap never claims a
+      // stroke its own lengths do not.
+      const kinds = new Set(act.map((k) => newInfo[k].stroke));
       p[F.lap.swimStroke] = SWIM_STROKE[kinds.size === 1 ? [...kinds][0] : 'mixed'];
     }
     return p;

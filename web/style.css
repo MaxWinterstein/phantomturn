@@ -618,6 +618,24 @@ body.dragging::after {
   white-space: nowrap;
 }
 
+/* A length that looks like two: the other direction from a merge, and the one
+   the repair cannot fix -- so it takes the danger tone of its finding. */
+.working-table tr.is-missed td:first-child {
+  box-shadow: inset 3px 0 0 var(--danger);
+  padding-left: 0.6rem;
+}
+
+.working-table .dur-missed {
+  font-weight: 700;
+  color: var(--danger);
+}
+
+/* Compound selector: .working-tag below sets the warn colour and would win a
+   tie on specificity by coming later. */
+.working-tag.working-tag-missed {
+  color: var(--danger);
+}
+
 .working-tag {
   margin-left: 0.35rem;
   font-size: 0.75rem;

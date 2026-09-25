@@ -89,6 +89,17 @@ const FINDINGS = {
     detail: (f) =>
       `${f.note} That would take ${f.lengthsBefore} lengths down to ${f.lengthsAfter}.`,
   },
+  'missed-turn': {
+    icon: '🔁',
+    name: 'Possible missed turn',
+    tone: 'danger',
+    detail: (f) =>
+      `One recorded length took ${fmtSeconds(f.durS)} with ${f.strokes} strokes — about ` +
+      `${f.looksLike} lengths' worth, where one reads as ${fmtSeconds(f.unitS)}. The watch ` +
+      `probably missed a turn, so the distance is likely ${f.looksLike - 1} length` +
+      `${f.looksLike - 1 === 1 ? '' : 's'} short. Not fixed: splitting it would mean ` +
+      `inventing a turn the watch never recorded, and its stroke is left as the watch said.`,
+  },
   'uncertain-lengths': {
     icon: '🤔',
     name: 'Two readings are possible',
@@ -98,7 +109,7 @@ const FINDINGS = {
 };
 
 /** Things that make the whole result untrustworthy sort to the top. */
-const TOP = new Set(['lap-structure', 'uncertain-lengths']);
+const TOP = new Set(['lap-structure', 'uncertain-lengths', 'missed-turn']);
 const findingOrder = (f) => (TOP.has(f.type) ? 0 : 1);
 
 /**
@@ -286,9 +297,13 @@ function renderWorking(info) {
   if (!laps.length) return;
 
   const merged = laps.filter((l) => l.lengths > l.target).length;
-  workingBadge.textContent = merged
-    ? `${merged} lap${merged === 1 ? '' : 's'} merged`
-    : `${laps.length} laps, none merged`;
+  const missedLaps = laps.filter((l) => l.missedTurns.some(Boolean)).length;
+  workingBadge.textContent = [
+    merged ? `${merged} lap${merged === 1 ? '' : 's'} merged` : `${laps.length} laps, none merged`,
+    missedLaps ? `${missedLaps} possible missed turn${missedLaps === 1 ? '' : 's'}` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   if (info.lengthUnitS) {
     workingUnit.textContent =
@@ -313,19 +328,20 @@ function renderWorking(info) {
       // Each duration unbreakable, so a narrow screen wraps at the "+" and never
       // strands the unit: "95" on one line and "s" on the next was the result.
       const seen = l.lengthsS
-        .map((s) =>
+        .map((s, i) =>
           // A length the watch never timed is "—", not a confident "0 s".
           s === null
             ? '<span class="dur" title="no duration recorded">—</span>'
-            : `<span class="dur">${esc(Math.round(s))} s</span>`,
+            : `<span class="dur${l.missedTurns[i] ? ' dur-missed' : ''}">${esc(Math.round(s))} s</span>`,
         )
         .join(' + ');
+      const missed = l.missedTurns.some(Boolean);
       return `
-        <tr class="${isMerged ? 'is-merged' : ''}">
+        <tr class="${isMerged ? 'is-merged' : ''}${missed ? ' is-missed' : ''}">
           <td class="num">${esc(l.lap + 1)}</td>
           <td class="num">${esc(l.lengths)}</td>
           <td class="num">${isMerged ? '<span aria-hidden="true">→ </span>' : ''}${esc(l.target)}</td>
-          <td class="seen">${seen}${isMerged ? ' <span class="working-tag">merged</span>' : ''}</td>
+          <td class="seen">${seen}${isMerged ? ' <span class="working-tag">merged</span>' : ''}${missed ? ' <span class="working-tag working-tag-missed">possible missed turn</span>' : ''}</td>
         </tr>`;
     })
     .join('');
