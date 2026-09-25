@@ -300,14 +300,15 @@ for screenshots and for checking a deploy.
   `resolveLapTargets()` produces one target per lap; `analyze()` returns them
   as `lapTargets` and `repair()` uses those rather than recomputing. A fixed
   number still overrides. Merging is downwards only — a lap with fewer lengths
-  than its target is untouched and nothing is ever split, so a *missed* turn is
-  out of reach either way.
-- **The unit estimate is `max()` of two estimators on purpose.** Both fail
-  small, in opposite directions: the recorded-length estimator is useless when
-  every length was split (swim-01 has no intact length anywhere), and the
-  lap-total estimator is dragged down by long continuous blocks. Do not
-  "simplify" it to one of them — `auto-lengths.test.mjs` pins the swimmer's
-  confirmed count for each fixture.
+  than its target is untouched. A *missed* turn is out of its reach; that is
+  what the separate, opt-in split below is for.
+- **The unit is whichever of two estimates is more uniform.** One comes from
+  the recorded lengths, one from the lap totals; `estimateLengthUnit()` takes
+  the set with the lower coefficient of variation, as described under "How the
+  length unit is chosen" above. This bullet used to describe the `max()` of the
+  two, the rule that section explains was discarded after it scored 4-for-6 —
+  do not bring it back. `auto-lengths.test.mjs` pins the swimmer's confirmed
+  count for each fixture.
 - **The `lap-structure` finding is the guard against a wrong target.** It fires when more
   than half the laps hold multiple lengths, or any lap holds four or more —
   which means the swimmer did not lap once per length and the merge will delete
@@ -330,8 +331,16 @@ for screenshots and for checking a deploy.
   this tool adds data: a merge only discards, so every number it writes was
   measured, but a split has to make up where the turn fell and how the strokes
   divide. Keep it off by default, keyed per length (the finding's `key`, the
-  length's start time), and keep the made-up lengths marked as such
-  (`swimLaps[].split`) in every front end. `split.test.mjs` holds it to adding
+  length's index in the file *as recorded* — not its start time, which two
+  lengths can share, and not its index in a split file, which shifts), and keep
+  the made-up lengths marked as such (`swimLaps[].split`) in every front end.
+  Anything that reports what the *watch* did counts from `recorded` and
+  `info.lengths`, never from the split file — the Watch column, the
+  phantom-turn and lap-structure findings, the "was" figures. A fixed
+  lengths-per-lap can merge the made-up parts straight back; the finding's
+  `gained` says how many lengths a split really added, and a merged group
+  containing a made-up length keeps the watch's stroke, or its doubled stroke
+  count reads as breaststroke all over again. `split.test.mjs` holds it to adding
   nothing but a length: total time and strokes are unchanged. Before/after
   figures must subtract the made-up lengths, or "before" includes data that
   never existed.
