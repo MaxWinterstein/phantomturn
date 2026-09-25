@@ -33,7 +33,7 @@ const workingUnit = el('workingUnit');
 const workingRows = el('workingRows');
 
 /** Loaded file, the most recent repair output, and the anonymized copy. */
-const state = { name: null, input: null, output: null, anonymized: null };
+const state = { name: null, input: null, output: null, anonymized: null, splits: new Set() };
 
 /**
  * Escapes text destined for innerHTML.
@@ -94,11 +94,26 @@ const FINDINGS = {
     name: 'Possible missed turn',
     tone: 'danger',
     detail: (f) =>
-      `One recorded length took ${fmtSeconds(f.durS)} with ${f.strokes} strokes — about ` +
-      `${f.looksLike} lengths' worth, where one reads as ${fmtSeconds(f.unitS)}. The watch ` +
-      `probably missed a turn, so the distance is likely ${f.looksLike - 1} length` +
-      `${f.looksLike - 1 === 1 ? '' : 's'} short. Not fixed: splitting it would mean ` +
-      `inventing a turn the watch never recorded, and its stroke is left as the watch said.`,
+      f.split
+        ? `One recorded length took ${fmtSeconds(f.durS)} with ${f.strokes} strokes, and is ` +
+          `now split into ${f.looksLike} lengths of about ${fmtSeconds(f.durS / f.looksLike)} ` +
+          'each. Those lengths are made up, not recorded: the turn is put halfway and the ' +
+          'strokes are divided with the time. Untick to put it back as the watch recorded it.'
+        : `One recorded length took ${fmtSeconds(f.durS)} with ${f.strokes} strokes — about ` +
+          `${f.looksLike} lengths' worth, where one reads as ${fmtSeconds(f.unitS)}. The watch ` +
+          `probably missed a turn, so the distance is likely ${f.looksLike - 1} length` +
+          `${f.looksLike - 1 === 1 ? '' : 's'} short. Its stroke is left as the watch said.`,
+    /*
+     * Opt-in, one length at a time, because a split invents data and only the
+     * swimmer knows whether there was a turn there. The value is the finding's
+     * key -- the length's start time -- which survives re-analysis, so the
+     * choice sticks while the other assumptions change.
+     */
+    control: (f) => `
+      <label class="finding-control">
+        <input type="checkbox" data-split-key="${esc(f.key)}"${f.split ? ' checked' : ''} />
+        Split into ${esc(f.looksLike)} lengths — I remember turning here
+      </label>`,
   },
   'uncertain-lengths': {
     icon: '🤔',
@@ -176,6 +191,8 @@ function readOptions() {
     // get clobbered halfway through at "1".
     if (!ok && document.activeElement !== input) input.value = value;
   }
+  // Not a form control: the switches live on the findings they belong to.
+  opts.splitMissedTurns = state.splits.size ? [...state.splits] : false;
   return opts;
 }
 
@@ -232,7 +249,13 @@ function render() {
   const { info, summary } = state.output;
 
   // What the watch claimed, reconstructed from the pre-merge length counts.
-  const lengthsBefore = info.swimLaps.reduce((a, l) => a + l.lengths, 0);
+  // What the watch recorded -- so the lengths a split made up come back out.
+  // Counted from the split file they are not "before" anything, and the old
+  // figure showed 1200 m for a swim the watch had recorded as 1150.
+  const madeUp = info.findings
+    .filter((f) => f.type === 'missed-turn' && f.split)
+    .reduce((a, f) => a + f.looksLike - 1, 0);
+  const lengthsBefore = info.swimLaps.reduce((a, l) => a + l.lengths, 0) - madeUp;
   const distanceBefore = lengthsBefore * info.poolM;
 
   statsEl.innerHTML = [
@@ -269,6 +292,7 @@ function render() {
           <div>
             <div class="finding-head"><span class="finding-name">${esc(meta.name)}</span>${lap}</div>
             <div class="finding-detail">${esc(meta.detail(f))}</div>
+            ${meta.control ? meta.control(f) : ''}
           </div>
         </li>`;
     })
@@ -298,9 +322,11 @@ function renderWorking(info) {
 
   const merged = laps.filter((l) => l.lengths > l.target).length;
   const missedLaps = laps.filter((l) => l.missedTurns.some(Boolean)).length;
+  const splitLaps = laps.filter((l) => l.split.some(Boolean)).length;
   workingBadge.textContent = [
     merged ? `${merged} lap${merged === 1 ? '' : 's'} merged` : `${laps.length} laps, none merged`,
     missedLaps ? `${missedLaps} possible missed turn${missedLaps === 1 ? '' : 's'}` : '',
+    splitLaps ? `${splitLaps} split` : '',
   ]
     .filter(Boolean)
     .join(' · ');
@@ -332,16 +358,17 @@ function renderWorking(info) {
           // A length the watch never timed is "—", not a confident "0 s".
           s === null
             ? '<span class="dur" title="no duration recorded">—</span>'
-            : `<span class="dur${l.missedTurns[i] ? ' dur-missed' : ''}">${esc(Math.round(s))} s</span>`,
+            : `<span class="dur${l.missedTurns[i] ? ' dur-missed' : ''}${l.split[i] ? ' dur-split' : ''}">${esc(Math.round(s))} s</span>`,
         )
         .join(' + ');
       const missed = l.missedTurns.some(Boolean);
+      const wasSplit = l.split.some(Boolean);
       return `
         <tr class="${isMerged ? 'is-merged' : ''}${missed ? ' is-missed' : ''}">
           <td class="num">${esc(l.lap + 1)}</td>
           <td class="num">${esc(l.lengths)}</td>
           <td class="num">${isMerged ? '<span aria-hidden="true">→ </span>' : ''}${esc(l.target)}</td>
-          <td class="seen">${seen}${isMerged ? ' <span class="working-tag">merged</span>' : ''}${missed ? ' <span class="working-tag working-tag-missed">possible missed turn</span>' : ''}</td>
+          <td class="seen">${seen}${isMerged ? ' <span class="working-tag">merged</span>' : ''}${missed ? ' <span class="working-tag working-tag-missed">possible missed turn</span>' : ''}${wasSplit ? ' <span class="working-tag working-tag-split">split — made up, not recorded</span>' : ''}</td>
         </tr>`;
     })
     .join('');
@@ -417,6 +444,8 @@ function withBusy(work) {
 }
 
 function loadBytes(name, label, bytes) {
+  // Splits belong to one swim; a key from another would match nothing, or worse.
+  state.splits = new Set();
   // A new swim starts closed. Only re-runs of the same file keep it open.
   working.open = false;
   state.name = name;
@@ -570,6 +599,7 @@ function reset() {
   state.input = null;
   state.output = null;
   state.anonymized = null;
+  state.splits = new Set();
   picker.value = '';
   filenameEl.textContent = '';
   statsEl.innerHTML = '';
@@ -617,6 +647,20 @@ window.addEventListener('drop', (e) => {
   dragDepth = 0;
   document.body.classList.remove('dragging');
   loadFile(e.dataTransfer?.files);
+});
+
+/*
+ * A split switch re-runs the repair at once. The findings are rebuilt from
+ * scratch by that, which would drop keyboard focus on the page -- so it is put
+ * back on the same switch afterwards.
+ */
+findingsEl.addEventListener('change', (e) => {
+  const key = e.target.dataset?.splitKey;
+  if (key === undefined) return;
+  if (e.target.checked) state.splits.add(Number(key));
+  else state.splits.delete(Number(key));
+  runRepair();
+  findingsEl.querySelector(`[data-split-key="${CSS.escape(key)}"]`)?.focus();
 });
 
 /** Re-running on every keystroke is wasteful on a large file. */
